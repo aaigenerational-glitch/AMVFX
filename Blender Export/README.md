@@ -52,6 +52,17 @@ graph. Note: true displacement renders in Cycles (Eevee supports it from
 4.2 in material preview); without Z-Depth the depth pass still feeds the
 Displacement output at zero height, leaving bump-style shading intact.
 
+## Verification
+
+Verified headless in **Blender 4.0.2** (2026-10-30) by
+`tests/test_blender_addon.py`: all passes load as texture nodes, the
+Normal → Normal Map, Alpha → Principled and Depth → gate links are
+asserted, and flipping the panel's Z-Displacement checkbox is asserted
+to drive the group input (0.0 → 1.0), the material displacement method
+(BUMP → BOTH, via `Material.cycles` on 4.x) and the Subdivision
+modifier's visibility. The After Effects panel is syntax-checked only —
+it has not been run inside AE.
+
 ## Legacy loader
 
 `../blender/amvfx_loader.py` remains as a minimal one-shot script version

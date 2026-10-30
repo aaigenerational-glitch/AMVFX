@@ -114,6 +114,24 @@ def _group_socket(ng, name, in_out, socket_type, default=None):
     return sock
 
 
+def _set_displacement_method(mat, enabled):
+    """Displacement method lives on Material in <=3.x and on
+    Material.cycles in 4.x - set whichever exists."""
+    value = "BOTH" if enabled else "BUMP"
+    cycles = getattr(mat, "cycles", None)
+    if cycles is not None and hasattr(cycles, "displacement_method"):
+        try:
+            cycles.displacement_method = value
+            return
+        except Exception:
+            pass
+    if hasattr(mat, "displacement_method"):
+        try:
+            mat.displacement_method = value
+        except Exception:
+            pass
+
+
 def _find_group_node(mat):
     if not mat or not mat.use_nodes:
         return None
@@ -139,11 +157,7 @@ def _sync_from_props(context):
         set_in("Z-Depth Midlevel", props.z_depth_midlevel)
         set_in("Normal Strength", props.normal_strength)
     if mat:
-        try:
-            mat.displacement_method = "BOTH" if props.z_depth_enabled \
-                else "BUMP"
-        except Exception:
-            pass
+        _set_displacement_method(mat, props.z_depth_enabled)
     obj = bpy.data.objects.get(OBJ_NAME)
     if obj:
         mod = obj.modifiers.get("AMVFX_Subdiv")
@@ -362,10 +376,7 @@ def build_plate(context):
     nt.links.new(gnode.outputs["Surface"], out.inputs["Surface"])
     if "Displacement" in gnode.outputs:
         nt.links.new(gnode.outputs["Displacement"], out.inputs["Displacement"])
-    try:
-        mat.displacement_method = "BOTH" if props.z_depth_enabled else "BUMP"
-    except Exception:
-        pass
+    _set_displacement_method(mat, props.z_depth_enabled)
     if "alpha" in passes:  # transparent plate where alpha exists
         for attr, val in (("blend_method", "BLEND"),
                           ("surface_render_method", "DITHERED")):
