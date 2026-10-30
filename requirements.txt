@@ -1,0 +1,13 @@
+# AMVFX full install (GPU profile)
+numpy
+pillow
+opencv-python-headless
+onnxruntime
+huggingface_hub
+OpenEXR
+gradio
+torch
+transformers
+diffusers
+accelerate
+safetensors

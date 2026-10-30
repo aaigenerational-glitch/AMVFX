@@ -1,0 +1,8 @@
+# AMVFX lite install (CPU, ONNX only - no torch)
+numpy
+pillow
+opencv-python-headless
+onnxruntime
+huggingface_hub
+OpenEXR
+gradio
