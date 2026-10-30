@@ -67,6 +67,27 @@ deterministic derivation — produced each pass, so results are auditable.
 upload an image or short clip, pick a profile and passes, download a ZIP
 with all sequences, MP4s and EXRs.
 
+## After Effects — `AE/`
+
+Run AMVFX from inside After Effects: a dockable **ScriptUI panel**
+(`AE/AMVFX_Panel.jsx`) that generates passes with your local install and
+builds a stacked comp from them, plus a full **CEP extension** source
+(`AE/cep-extension/`) ready to be signed into a `.zxp`. See
+[AE/README.md](AE/README.md) — including why a compiled `.aex` (native
+C++ SDK plug-in) is a different deliverable than a script/plugin panel.
+
+## Blender — `Blender Export/`
+
+An installable **Blender add-on** (`Blender Export/AMVFX_Blender_Export.zip`):
+point it at a job folder and it builds a plate whose `AMVFX_PBR` node
+group wires every pass into the right Principled sockets — Base Color
+(×AO), Roughness, Metallic, Specular, Normal via a Normal Map node,
+Alpha, and Depth into a Displacement node — with an optional
+**Z-Displacement (Z-Depth)** checkbox plus matching Strength/Midlevel
+controls on the group node itself. See
+[Blender Export/README.md](Blender%20Export/README.md). The original
+one-shot script remains at `blender/amvfx_loader.py`.
+
 ## How it compares to Beeble
 
 See [docs/COMPARISON.md](docs/COMPARISON.md) for an honest feature and

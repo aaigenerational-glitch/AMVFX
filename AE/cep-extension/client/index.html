@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AMVFX</title>
+<style>
+  body { font-family: "Segoe UI", sans-serif; background: #232323; color: #d7d7d7;
+         font-size: 12px; margin: 10px; }
+  h3 { margin: 2px 0 8px; font-size: 13px; color: #fff; }
+  label { display: block; margin-top: 8px; color: #a8a8a8; }
+  input[type=text], select { width: 100%; box-sizing: border-box; margin-top: 2px;
+    background: #2f2f2f; color: #eee; border: 1px solid #444; padding: 4px; }
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+  button { width: 100%; margin-top: 10px; padding: 7px; background: #1473e6;
+    color: #fff; border: 0; border-radius: 3px; cursor: pointer; }
+  button.secondary { background: #3a3a3a; }
+  .passes label { display: inline-block; margin: 2px 6px 2px 0; color: #d7d7d7; }
+  #status { margin-top: 10px; color: #9ecbff; min-height: 16px; }
+</style>
+</head>
+<body>
+  <h3>🎬 AMVFX — VFX Passes</h3>
+  <label>AMVFX install folder</label>
+  <input type="text" id="amvfxDir" value="~/AMVFX">
+  <div class="row">
+    <div><label>Python</label><input type="text" id="py" value="python3"></div>
+    <div><label>Profile</label>
+      <select id="profile"><option>lite</option><option>gpu</option></select></div>
+  </div>
+  <label>Source image / video (full path)</label>
+  <input type="text" id="src" placeholder="/path/to/shot.mp4">
+  <label>Passes</label>
+  <div class="passes" id="passes"></div>
+  <button id="gen">1) Generate Passes (local AMVFX)</button>
+  <button id="imp" class="secondary">2) Import Passes + Build Comp</button>
+  <div id="status">Runs your local AMVFX install; AE pauses while generating.</div>
+  <script src="./CSInterface.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>
