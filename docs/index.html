@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMVFX — Open-Source VFX Passes Generator</title>
+<meta name="description" content="Turn any image or video into Beeble-style relightable VFX passes — alpha, depth, normal, base color, roughness, metallic, specular — using only open models.">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: #0b0e14; color: #e6e9ef; line-height: 1.55; }
+  a { color: #7aa2ff; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px 64px; }
+  header { text-align: center; padding: 72px 20px 36px;
+           background: radial-gradient(ellipse at 50% -20%, #3b2d6e 0%, #0b0e14 65%); }
+  header h1 { font-size: 56px; margin: 0; letter-spacing: 2px; }
+  header h1 span { background: linear-gradient(90deg, #a06bff, #4f8cff);
+                   -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p.tag { font-size: 20px; color: #aeb6c4; margin: 12px auto 26px; max-width: 640px; }
+  .btn { display: inline-block; padding: 11px 22px; border-radius: 8px; margin: 4px;
+         background: #4f8cff; color: #fff; text-decoration: none; font-weight: 600; }
+  .btn.ghost { background: transparent; border: 1px solid #3a4356; color: #e6e9ef; }
+  h2 { margin-top: 52px; font-size: 26px; border-bottom: 1px solid #232a38; padding-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 20px; }
+  .tile { border-radius: 10px; padding: 18px; min-height: 118px; border: 1px solid #232a38; }
+  .tile h3 { margin: 0 0 6px; font-size: 17px; }
+  .tile p { margin: 0; font-size: 13.5px; color: #c6ccd8; }
+  .t-alpha   { background: linear-gradient(135deg, #22262e, #3d434f); }
+  .t-depth   { background: linear-gradient(90deg, #f2f2f2, #101216); color: #111; }
+  .t-depth p { color: #333; }
+  .t-normal  { background: linear-gradient(135deg, #8a7dff, #b48cff 45%, #7dd8a8); color: #14101f; }
+  .t-normal p { color: #241d3d; }
+  .t-base    { background: linear-gradient(135deg, #b06a3b, #4c7a4f 55%, #3b5a8a); }
+  .t-rough   { background: linear-gradient(135deg, #555b66, #9aa1ad); color: #101216; }
+  .t-rough p { color: #262a31; }
+  .t-metal   { background: linear-gradient(135deg, #d8b25c, #8a6d2f); color: #1d1607; }
+  .t-metal p { color: #33270d; }
+  .t-spec    { background: linear-gradient(135deg, #e8ecf4, #8f9bb3); color: #101216; }
+  .t-spec p  { color: #262a31; }
+  .t-ao      { background: linear-gradient(135deg, #e6e6e6, #4a4a4a); color: #111; }
+  .t-ao p    { color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #232a38; vertical-align: top; }
+  th { color: #aeb6c4; font-weight: 600; }
+  pre { background: #12161f; border: 1px solid #232a38; border-radius: 10px; padding: 16px;
+        overflow-x: auto; font-size: 13.5px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .note { background: #12161f; border: 1px solid #232a38; border-left: 4px solid #a06bff;
+          border-radius: 8px; padding: 14px 18px; margin-top: 20px; font-size: 14.5px; }
+  footer { text-align: center; color: #7c8494; font-size: 13.5px; margin-top: 56px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 <span>AMVFX</span></h1>
+  <p class="tag">Open-source VFX passes generator. Turn any image or video into relightable
+     passes — the Beeble-style workflow, rebuilt entirely from open models.</p>
+  <a class="btn" href="https://github.com/aaigenerational-glitch/AMVFX">View on GitHub</a>
+  <a class="btn ghost" href="https://github.com/aaigenerational-glitch/AMVFX/blob/main/docs/COMPARISON.md">AMVFX vs Beeble</a>
+</header>
+
+<div class="wrap">
+  <h2>The passes</h2>
+  <p>One source in, a full pass stack out — as PNG sequences, per-pass MP4s, and a single
+     16-bit multi-layer EXR per frame with the same layer names compositors expect
+     (Source / Alpha / Normal / Basecolor / Depth / …). Built for relighting in
+     Blender, Unreal and Nuke.</p>
+  <div class="grid">
+    <div class="tile t-alpha"><h3>Alpha</h3><p>Clean cut-out matte of the subject (BiRefNet, MIT).</p></div>
+    <div class="tile t-depth"><h3>Depth</h3><p>Normalized depth for fog, DOF and relight falloff (Depth Anything V2 Small, Apache-2.0).</p></div>
+    <div class="tile t-normal"><h3>Normal</h3><p>Object-frame normals, OpenGL convention (Beeble-matching) or DirectX. Model normals via Marigold, MoGe-2, or NormalCrafter for video.</p></div>
+    <div class="tile t-base"><h3>Base Color</h3><p>De-lit albedo with the lighting baked out (Marigold IID).</p></div>
+    <div class="tile t-rough"><h3>Roughness</h3><p>Per-pixel gloss variation for believable reflections (Marigold IID).</p></div>
+    <div class="tile t-metal"><h3>Metallic</h3><p>Metal vs dielectric separation (Marigold IID).</p></div>
+    <div class="tile t-spec"><h3>Specular</h3><p>True PBR F0, derived the standard way: mix(0.04, base color, metallic).</p></div>
+    <div class="tile t-ao"><h3>AO (bonus)</h3><p>Ambient occlusion derived from depth, for contact grounding.</p></div>
+  </div>
+
+  <h2>Two profiles</h2>
+  <table>
+    <tr><th>Profile</th><th>Hardware</th><th>What runs</th></tr>
+    <tr><td><b>lite</b></td><td>CPU, ONNX</td><td>Depth Anything V2 Small + BiRefNet; normals &amp; AO derived from depth. ~18 s per image.</td></tr>
+    <tr><td><b>gpu</b></td><td>GPU (runs on CPU too, slower)</td><td>Adds Marigold IID for base color / roughness / metallic and Marigold Normals; optional NormalCrafter for temporally consistent video normals.</td></tr>
+  </table>
+  <p>Every model is openly licensed — Apache-2.0, MIT, or CreativeML Open RAIL++-M — and every
+     job writes a <code>manifest.json</code> recording exactly which model or derivation produced
+     each pass. Full license audit: <a href="https://github.com/aaigenerational-glitch/AMVFX/blob/main/MODELS.md">MODELS.md</a>.</p>
+
+  <h2>Quickstart</h2>
+  <pre><code>git clone https://github.com/aaigenerational-glitch/AMVFX.git
+cd AMVFX
+pip install -r requirements-lite.txt
+
+# image or video in -&gt; passes out (PNG + MP4 + multi-layer EXR)
+python -m amvfx input.mp4 --out out/ --profile lite
+
+# or launch the web app
+python app.py</code></pre>
+
+  <div class="note">
+    <b>Honest scope:</b> AMVFX is a clean-room re-creation of the VFX-pass workflow using only
+    published open models — no Beeble code, weights or assets (their SwitchLight models are
+    proprietary). Where AMVFX still trails Beeble, the
+    <a href="https://github.com/aaigenerational-glitch/AMVFX/blob/main/docs/COMPARISON.md">comparison doc</a>
+    says so plainly. This page is the project site; the interactive app runs locally
+    (<code>python app.py</code>) or on Hugging Face Spaces.
+  </div>
+
+  <footer>AMVFX — MIT licensed · Built with Depth Anything V2, BiRefNet, Marigold, MoGe-2 and NormalCrafter ·
+  <a href="https://github.com/aaigenerational-glitch/AMVFX">github.com/aaigenerational-glitch/AMVFX</a></footer>
+</div>
+</body>
+</html>

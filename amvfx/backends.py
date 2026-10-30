@@ -271,7 +271,7 @@ class MoGeBackend:
         x = torch.tensor(frame.transpose(2, 0, 1), dtype=torch.float32,
                          device=self.device)
         with torch.no_grad():
-            out = self.model.infer(x)
+            out = self.model.infer(x, use_fp16=False)  # CPU: fp16 conv mismatches float biases
         depth = out["depth"].detach().cpu().numpy().astype(np.float32)
         depth = np.where(np.isfinite(depth), depth, 0.0)
         normal = out["normal"].detach().cpu().numpy().astype(np.float32)
