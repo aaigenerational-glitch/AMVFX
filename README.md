@@ -47,6 +47,22 @@ Effects. A Blender loader script is included in `blender/`.
   metallic and model normals, completing the full 7-pass set. Needs a
   GPU for practical speeds (works on CPU, slowly).
 
+## Install (app + models + add-ons)
+
+The installer sets up the app, a private Python environment and the
+local models, and — each behind its own checkbox — drops the **Blender
+add-on** into every detected Blender version's addons folder
+(auto-enabled) and the **After Effects panel / CEP extension** into
+After Effects:
+
+```bash
+installer/install.bat        # Windows
+./installer/install.sh       # macOS / Linux
+```
+
+Checkbox window with a display, prompts in a terminal, or scripted:
+`python installer/install.py --yes`. Details: [installer/README.md](installer/README.md).
+
 ## Quick start (CLI)
 
 ```bash
