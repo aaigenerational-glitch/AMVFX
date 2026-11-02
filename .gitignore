@@ -5,3 +5,5 @@ out/
 outputs/
 *.zip
 .DS_Store
+dist/
+build/

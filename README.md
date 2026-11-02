@@ -63,6 +63,14 @@ installer/install.bat        # Windows
 Checkbox window with a display, prompts in a terminal, or scripted:
 `python installer/install.py --yes`. Details: [installer/README.md](installer/README.md).
 
+**Standalone executables:** GitHub Releases carry `AMVFX-Installer`
+builds for Windows (`.exe`), macOS and Linux — the same installer,
+frozen with PyInstaller, payload included (the machine still needs
+Python 3.10+ for the app's environment step). They're built by the
+**Release installers** workflow (`.github/workflows/release.yml`):
+push a `v*` tag or run it from the Actions tab. Builds are unsigned —
+see the workflow/README notes on SmartScreen/Gatekeeper prompts.
+
 ## Quick start (CLI)
 
 ```bash

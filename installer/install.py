@@ -36,7 +36,12 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PAYLOAD = os.path.dirname(HERE)  # the AMVFX repo root
+if getattr(sys, "frozen", False):
+    # PyInstaller build: the payload travels inside the executable and is
+    # unpacked to a temp dir (sys._MEIPASS) at runtime.
+    PAYLOAD = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+else:
+    PAYLOAD = os.path.dirname(HERE)  # the AMVFX repo root
 IS_WIN = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 
@@ -161,6 +166,22 @@ def install_app(target, dry):
             shutil.copy2(src, dst)
 
 
+def _python_exe():
+    """A real Python interpreter for venv creation. When this installer is
+    a frozen PyInstaller binary, sys.executable is the installer itself -
+    so find the user's Python instead."""
+    if not getattr(sys, "frozen", False):
+        return sys.executable
+    for name in ("py", "python", "python3"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise RuntimeError(
+        "Python 3.10+ is required to install AMVFX but was not found on "
+        "PATH. Install it from python.org (tick 'Add to PATH' on Windows) "
+        "and re-run this installer.")
+
+
 def install_venv(target, full, dry):
     req = "requirements.txt" if full else "requirements-lite.txt"
     log(f"Python environment -> {target}/.venv (from {req})")
@@ -168,7 +189,7 @@ def install_venv(target, full, dry):
         return
     venv = os.path.join(target, ".venv")
     if not os.path.exists(venv):
-        subprocess.run([sys.executable, "-m", "venv", venv], check=True)
+        subprocess.run([_python_exe(), "-m", "venv", venv], check=True)
     py = os.path.join(venv, "Scripts" if IS_WIN else "bin",
                       "python.exe" if IS_WIN else "python")
     subprocess.run([py, "-m", "pip", "install", "--upgrade", "pip"],
@@ -185,7 +206,7 @@ def install_models(target, full, dry):
     py = os.path.join(target, ".venv", "Scripts" if IS_WIN else "bin",
                       "python.exe" if IS_WIN else "python")
     if not os.path.exists(py):
-        py = sys.executable
+        py = _python_exe()
     code = ("from huggingface_hub import snapshot_download\n"
             "import sys\n"
             "for m in sys.argv[1:]:\n"
