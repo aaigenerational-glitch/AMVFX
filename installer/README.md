@@ -22,6 +22,16 @@ add-on behind its **own checkbox**:
 - ☐ **After Effects CEP extension** — copied into the per-user CEP
   extensions folder (no admin needed) and `PlayerDebugMode` is set for
   the unsigned build.
+- ☑ **Desktop shortcut** — a shortcut on the Desktop that opens the app
+  (Windows `.lnk`, macOS `AMVFX.app`, Linux `.desktop`). It runs
+  `launch_amvfx.py`, which starts the app with the install's own venv
+  Python and opens the browser.
+
+**Updating later:** don't re-run the installer for new versions — the
+app updates itself. Open AMVFX → **Updates** panel → *Check for
+updates* / *Update now*. The update installs in place from GitHub and
+keeps the venv, models and settings (`python -m amvfx.updater --apply`
+does the same from a terminal).
 
 ## Run it
 

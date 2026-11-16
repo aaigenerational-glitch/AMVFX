@@ -83,5 +83,52 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
     note_out = gr.Textbox(label="Job summary", interactive=False)
     btn.click(process, [inp, profile, passes], [gallery, zip_out, note_out])
 
+    # ---------------- Updates: check + install in place ----------------
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    ON_SPACE = bool(os.environ.get("SPACE_ID"))
+
+    def _check_updates():
+        from amvfx import updater
+        info = updater.check_for_update(APP_DIR)
+        if info.get("error"):
+            return (f"You are on v{info['current']}. Could not reach "
+                    f"GitHub to check for updates.")
+        if info["update_available"]:
+            return (f"Update available: v{info['current']} -> "
+                    f"v{info['latest']}. 'Update now' installs it in "
+                    "place - models, venv and settings are kept - then "
+                    "restart the app.")
+        return f"You are up to date (v{info['current']})."
+
+    def _apply_update():
+        from amvfx import updater
+        try:
+            new = updater.apply_update(APP_DIR, log=lambda m: None)
+        except Exception as exc:
+            return f"Update failed: {exc}"
+        return (f"Updated to v{new}. Close this app window/process and "
+                "reopen AMVFX (desktop shortcut) to use the new version.")
+
+    with gr.Accordion("Updates - get new features without reinstalling",
+                      open=False):
+        if ON_SPACE:
+            gr.Markdown("This hosted copy updates itself when the "
+                        "project publishes a new version. To update a "
+                        "*local* install, use this panel in the app on "
+                        "your own machine.")
+        else:
+            from amvfx import __version__ as _v
+            gr.Markdown(f"Installed version: **v{_v}**. Updates come "
+                        "from the AMVFX GitHub repo and install over "
+                        "this folder - no reinstall, no re-download of "
+                        "models.")
+            with gr.Row():
+                check_btn = gr.Button("Check for updates")
+                update_btn = gr.Button("Update now", variant="primary")
+            update_out = gr.Textbox(label="Update status",
+                                    interactive=False)
+            check_btn.click(_check_updates, None, update_out)
+            update_btn.click(_apply_update, None, update_out)
+
 if __name__ == "__main__":
     demo.launch()

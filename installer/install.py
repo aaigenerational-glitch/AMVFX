@@ -12,7 +12,10 @@ One installer for the whole local workflow:
   * the After Effects panel (.jsx) -- checkbox, copied into every
                             detected AE ScriptUI Panels folder,
   * the After Effects CEP extension -- separate checkbox, copied into the
-                            per-user CEP extensions folder (no admin).
+                            per-user CEP extensions folder (no admin),
+  * a Desktop shortcut -- checkbox; opens the app (via launch_amvfx.py,
+                            which starts it with the install's own venv
+                            Python and opens the browser).
 
 Usage:
   python install.py                 # interactive checkboxes (GUI if a
@@ -54,8 +57,9 @@ FULL_MODELS = LITE_MODELS + [
     "prs-eth/marigold-iid-appearance-v1-1",
     "prs-eth/marigold-normals-v1-1",
 ]
-PAYLOAD_ITEMS = ["app.py", "amvfx", "requirements.txt", "requirements-lite.txt",
-                 "LICENSE", "README.md", "MODELS.md", "AE", "Blender Export",
+PAYLOAD_ITEMS = ["app.py", "launch_amvfx.py", "amvfx", "requirements.txt",
+                 "requirements-lite.txt", "LICENSE", "README.md", "MODELS.md",
+                 "VERSION", "AE", "Blender Export",
                  "blender", "docs", "examples", "tests", "installer"]
 IGNORE = shutil.ignore_patterns(".git", ".venv", "__pycache__", "*.pyc",
                                 "*.zip", ".DS_Store")
@@ -301,12 +305,95 @@ def install_cep(target, dry):
             "see AE/README.md.")
 
 
+def detect_desktop_dir():
+    override = os.environ.get("AMVFX_DESKTOP_DIR")
+    if override:
+        return override
+    home = os.path.expanduser("~")
+    if IS_WIN:
+        return os.path.join(os.environ.get("USERPROFILE", home), "Desktop")
+    return os.path.join(home, "Desktop")
+
+
+def _venv_python(target, windowed=False):
+    if IS_WIN:
+        names = ("pythonw.exe", "python.exe") if windowed else ("python.exe",)
+        sub = "Scripts"
+    else:
+        names = ("python",)
+        sub = "bin"
+    for n in names:
+        p = os.path.join(target, ".venv", sub, n)
+        if os.path.exists(p):
+            return p
+    return os.path.join(target, ".venv", sub, names[-1])
+
+
+def install_shortcut(target, dry):
+    """Desktop shortcut that opens the app (via launch_amvfx.py)."""
+    desktop = detect_desktop_dir()
+    launcher = os.path.join(target, "launch_amvfx.py")
+    py = _venv_python(target, windowed=True)
+    if IS_WIN:
+        lnk = os.path.join(desktop, "AMVFX.lnk")
+        log(f"Desktop shortcut -> {lnk}")
+        if dry:
+            return
+        os.makedirs(desktop, exist_ok=True)
+        ps = ("$ws = New-Object -ComObject WScript.Shell; "
+              f"$s = $ws.CreateShortcut('{lnk}'); "
+              f"$s.TargetPath = '{py}'; "
+              f"$s.Arguments = '\"{launcher}\"'; "
+              f"$s.WorkingDirectory = '{target}'; "
+              "$s.Description = 'AMVFX - VFX Passes Generator'; $s.Save()")
+        try:
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           check=True, capture_output=True, timeout=60)
+        except Exception as exc:
+            bat = os.path.join(desktop, "AMVFX.bat")
+            with open(bat, "w") as f:
+                f.write(f'@echo off\r\ncd /d "{target}"\r\n'
+                        f'"{py}" "{launcher}"\r\n')
+            log(f"Desktop shortcut: .lnk creation failed ({exc}); "
+                f"wrote {bat} instead.")
+        return
+    if IS_MAC:
+        bundle = os.path.join(desktop, "AMVFX.app")
+        log(f"Desktop app shortcut -> {bundle}")
+        if dry:
+            return
+        macos_dir = os.path.join(bundle, "Contents", "MacOS")
+        os.makedirs(macos_dir, exist_ok=True)
+        script = os.path.join(macos_dir, "AMVFX")
+        with open(script, "w") as f:
+            f.write(f'#!/bin/sh\nexec "{py}" "{launcher}"\n')
+        os.chmod(script, 0o755)
+        with open(os.path.join(bundle, "Contents", "Info.plist"), "w") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                    '<plist version="1.0"><dict>'
+                    '<key>CFBundleName</key><string>AMVFX</string>'
+                    '<key>CFBundleExecutable</key><string>AMVFX</string>'
+                    '<key>CFBundleIdentifier</key><string>com.amvfx.app'
+                    '</string></dict></plist>\n')
+        return
+    entry = os.path.join(desktop, "AMVFX.desktop")
+    log(f"Desktop shortcut -> {entry}")
+    if dry:
+        return
+    os.makedirs(desktop, exist_ok=True)
+    with open(entry, "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=AMVFX\n"
+                f'Exec="{py}" "{launcher}"\n'
+                f"Path={target}\nTerminal=false\nCategories=Graphics;Video;\n")
+    os.chmod(entry, 0o755)
+
+
 # --------------------------------------------------------------------------
 # UI: GUI checkboxes, terminal prompts, or flags
 # --------------------------------------------------------------------------
 
 DEFAULTS = dict(app=True, models=True, full=False, blender=True,
-                ae_panel=True, cep=False)
+                ae_panel=True, cep=False, shortcut=True)
 
 
 def gui_choices():
@@ -334,6 +421,7 @@ def gui_choices():
         ("blender", "Blender add-on (AMVFX_PBR + Z-Depth displacement)", False),
         ("ae_panel", "After Effects panel (ScriptUI .jsx)", False),
         ("cep", "After Effects CEP extension (.zxp source, unsigned mode)", False),
+        ("shortcut", "Desktop shortcut (double-click opens the app)", False),
     ]
     for key, label, locked in boxes:
         v = tk.BooleanVar(value=DEFAULTS[key])
@@ -374,6 +462,7 @@ def prompt_choices():
         ("blender", "Install the Blender add-on into detected Blender folders?"),
         ("ae_panel", "Install the After Effects panel (.jsx) into detected AE folders?"),
         ("cep", "Install the After Effects CEP extension (unsigned mode)?"),
+        ("shortcut", "Create a Desktop shortcut that opens the app?"),
     ]
     for key, q in questions:
         d = "Y" if DEFAULTS[key] else "n"
@@ -398,6 +487,8 @@ def do_install(state, dry=False, gui_log=None):
         install_ae_panel(target, dry)
     if state.get("cep"):
         install_cep(target, dry)
+    if state.get("shortcut"):
+        install_shortcut(target, dry)
     log(f"Finished. App: {target}")
     log("Run the app:  " + os.path.join(target, ".venv",
                                         "Scripts" if IS_WIN else "bin",
@@ -414,7 +505,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--skip-venv", action="store_true",
                     help="copy files only; do not create the Python venv")
-    for name in ("models", "full", "blender", "ae-panel", "cep"):
+    for name in ("models", "full", "blender", "ae-panel", "cep", "shortcut"):
         ap.add_argument(f"--with-{name}", dest=name.replace("-", "_"),
                         action="store_true", default=None)
         ap.add_argument(f"--no-{name}", dest=name.replace("-", "_"),
@@ -422,7 +513,8 @@ def main():
     args = ap.parse_args()
 
     flags = {k: v for k, v in vars(args).items()
-             if k in ("models", "full", "blender", "ae_panel", "cep")
+             if k in ("models", "full", "blender", "ae_panel", "cep",
+                      "shortcut")
              and v is not None}
     if args.gui:
         gui_choices()

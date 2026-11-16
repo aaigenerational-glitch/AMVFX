@@ -35,21 +35,32 @@ def test_install_into_fake_hosts():
         addons = os.path.join(tmp, "blender_addons")
         panels = os.path.join(tmp, "ae_panels")
         cep = os.path.join(tmp, "cep_extensions")
-        for d in (addons, panels, cep):
+        desktop = os.path.join(tmp, "Desktop")
+        for d in (addons, panels, cep, desktop):
             os.makedirs(d)
         env = {"AMVFX_BLENDER_ADDONS_DIRS": addons,
                "AMVFX_AE_PANEL_DIRS": panels,
-               "AMVFX_CEP_DIR": cep}
+               "AMVFX_CEP_DIR": cep,
+               "AMVFX_DESKTOP_DIR": desktop}
         r = _run(["--target", target, "--skip-venv", "--no-models",
                   "--with-blender", "--with-ae-panel", "--with-cep"], env)
         assert r.returncode == 0, r.stderr + r.stdout
         assert os.path.isfile(os.path.join(target, "app.py"))
+        assert os.path.isfile(os.path.join(target, "launch_amvfx.py"))
         assert os.path.isfile(os.path.join(target, "amvfx", "pipeline.py"))
         assert os.path.isfile(os.path.join(
             addons, "amvfx_blender_export", "__init__.py")), r.stdout
         assert os.path.isfile(os.path.join(panels, "AMVFX_Panel.jsx"))
         assert os.path.isfile(os.path.join(
             cep, "com.amvfx.panel", "CSXS", "manifest.xml"))
+        # desktop shortcut (default on): one of the per-OS artifacts
+        names = os.listdir(desktop)
+        assert any(n.startswith("AMVFX") for n in names), (names, r.stdout)
+        entry = os.path.join(desktop, "AMVFX.desktop")
+        if os.path.isfile(entry):
+            with open(entry) as f:
+                body = f.read()
+            assert "launch_amvfx.py" in body and target in body
     print("PASS test_install_into_fake_hosts")
 
 

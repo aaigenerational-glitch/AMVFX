@@ -71,6 +71,14 @@ Python 3.10+ for the app's environment step). They're built by the
 push a `v*` tag or run it from the Actions tab. Builds are unsigned —
 see the workflow/README notes on SmartScreen/Gatekeeper prompts.
 
+**Updating:** once installed, don't reinstall for new versions — open
+the app's **Updates** panel, check, and update in place (venv, models
+and settings are kept). The installer can also add a **Desktop
+shortcut** that opens the app. Daily improvements land on GitHub from
+the backlog in [docs/ROADMAP.md](docs/ROADMAP.md), which also parks
+bigger tool ideas (rotobrush, matte refinement, ...) as
+consideration-only.
+
 ## Quick start (CLI)
 
 ```bash
