@@ -5,6 +5,49 @@
  * simple: amvfxGenerate("amvfxDir|python|src|profile|pass1,pass2,...")
  */
 
+/* Resolve the layer selected in the active comp's timeline to a
+ * source file: footage -> its file on disk; a composition (precomp)
+ * is rendered to a temp movie via the render queue (whole queue
+ * renders; H.264 template when available, else Lossless).
+ * Returns "OK:<path>" or "ERROR:<reason>". */
+function amvfxSelectedSource() {
+    var comp = app.project.activeItem;
+    if (!(comp instanceof CompItem))
+        return "ERROR:Open a composition and select a layer in the timeline first.";
+    var sel = comp.selectedLayers;
+    if (!sel || sel.length === 0)
+        return "ERROR:No layer is selected in the active composition.";
+    var layer = sel[0];
+    var src = layer.source;
+    if (src instanceof FootageItem) {
+        if (src.file) return "OK:" + src.file.fsName;
+        return "ERROR:The selected layer's footage has no file on disk (generated or missing footage). Pick a file instead.";
+    }
+    if (src instanceof CompItem) {
+        var safe = src.name.replace(/[^\w\- ]+/g, "_");
+        var tmp = new File(Folder.temp.fsName + "/AMVFX_selected_" + safe + ".mp4");
+        var rqItem = null;
+        try {
+            rqItem = app.project.renderQueue.items.add(src);
+            var om = rqItem.outputModules[1];
+            try { om.applyTemplate("H.264"); }
+            catch (e1) {
+                try { om.applyTemplate("Lossless"); } catch (e2) {}
+                tmp = new File(Folder.temp.fsName + "/AMVFX_selected_" + safe + ".mov");
+            }
+            om.file = tmp;
+            app.project.renderQueue.render();
+            rqItem.remove();
+            if (tmp.exists) return "OK:" + tmp.fsName;
+            return "ERROR:Rendering the selected composition did not produce a file.";
+        } catch (e) {
+            try { if (rqItem) rqItem.remove(); } catch (e3) {}
+            return "ERROR:Could not render the selected composition: " + e.toString();
+        }
+    }
+    return "ERROR:The selected layer is not footage or a composition - solids, text, shapes and cameras can't be a pass source.";
+}
+
 function amvfxOutFolder(srcPath) {
     var src = new File(srcPath);
     var base = src.name.replace(/\.[^\.]+$/, "");

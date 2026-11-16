@@ -14,12 +14,33 @@ per pass above it, plus the multi-layer EXR sequence when present.
    - Windows: `C:\Program Files\Adobe\Adobe After Effects <version>\Support Files\Scripts\ScriptUI Panels\`
    - macOS: `/Applications/Adobe After Effects <version>/Scripts/ScriptUI Panels/`
 2. Restart After Effects, open **Window > AMVFX_Panel.jsx**.
-3. Set the AMVFX install folder + Python command, pick a source file,
-   choose profile/passes, then **Generate**, then **Import + Build Comp**.
+3. Set the AMVFX install folder + Python command, choose the source
+   (below), choose profile/passes, then **Generate**, then
+   **Import + Build Comp**.
 
 In **Preferences > Scripting & Expressions**, enable
 "Allow Scripts to Write Files and Access Network" (needed for the panel to
 launch the local AMVFX process). AE pauses while passes generate.
+
+## Choosing the source: file, or the selected timeline clip
+
+Both panels offer two source modes:
+
+- **Pick a file** — any image/video on disk (the original workflow).
+- **Use Selected Clip** — the layer selected in the active comp's
+  timeline becomes the source:
+  - a **footage layer** resolves to its file on disk;
+  - a **composition / precomp layer** is first rendered to a temp
+    movie through the render queue (H.264 template when available,
+    otherwise Lossless; the whole render queue renders), and that
+    movie becomes the source;
+  - anything else (solid, text, shape, camera, footage with no file)
+    reports a plain-language error instead of guessing.
+
+Notes: generation runs on the **whole source file** — a layer's
+in/out trim is not applied yet (roadmap item). Passes are imported and
+stacked into a new comp as before, so the generated layers line up
+with the plate you selected.
 
 ## Option 2 — CEP extension (`.zxp` source)
 

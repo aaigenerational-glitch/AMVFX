@@ -18,6 +18,17 @@
         return Array.prototype.slice.call(box.querySelectorAll("input:checked"))
             .map(function (cb) { return cb.value; }).join(",");
     }
+    document.getElementById("sel").addEventListener("click", function () {
+        status("Resolving the selected timeline clip...");
+        cs.evalScript("amvfxSelectedSource()", function (res) {
+            if (res.indexOf("OK:") === 0) {
+                document.getElementById("src").value = res.slice(3);
+                status("Source set from the timeline selection.");
+            } else {
+                status(res.replace(/^ERROR:/, ""));
+            }
+        });
+    });
     document.getElementById("gen").addEventListener("click", function () {
         if (!val("src")) { status("Pick a source file first."); return; }
         var args = [val("amvfxDir"), val("py"), val("src"),

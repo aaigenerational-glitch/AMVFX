@@ -8,7 +8,11 @@
  *
  * What it does:
  *   1. Runs your local AMVFX install (python -m amvfx ...) on a source
- *      image/video you pick. AE pauses while the passes generate.
+ *      image/video you pick - or on the clip currently SELECTED in the
+ *      timeline ("Use Selected Clip"): a footage layer resolves to its
+ *      file on disk, and a composition (precomp) is rendered to a temp
+ *      movie through the render queue first. AE pauses while the
+ *      passes generate.
  *   2. Imports the generated passes (PNG sequences / MP4s / EXR sequence)
  *      and builds a comp with the source plate at the bottom and every
  *      pass stacked above it, named and ready for relight/comp work.
@@ -48,6 +52,14 @@
         btnSrc.onClick = function () {
             var f = File.openDialog("Pick an image or video");
             if (f) srcPath.text = f.fsName;
+        };
+        var btnSel = pal.add("button", undefined,
+            "Use Selected Clip (timeline selection)");
+        btnSel.onClick = function () {
+            var r = resolveSelectedClip();
+            if (r.error) { alert(r.error); return; }
+            srcPath.text = r.path;
+            status.text = "Source from timeline: " + r.label;
         };
 
         var g3 = pal.add("group");
@@ -159,6 +171,65 @@
 
         pal.layout.resize();
         return pal;
+    }
+
+    // Resolve the layer selected in the active comp's timeline to a
+    // source file AMVFX can process. Footage -> its file on disk.
+    // Composition -> rendered to a temp movie via the render queue
+    // (the whole queue renders; H.264 template when available, else
+    // Lossless). Anything else -> a plain-language error.
+    function resolveSelectedClip() {
+        var comp = app.project.activeItem;
+        if (!(comp instanceof CompItem))
+            return {error: "Open a composition and select a layer in " +
+                           "the timeline first."};
+        var sel = comp.selectedLayers;
+        if (!sel || sel.length === 0)
+            return {error: "No layer is selected in the active " +
+                           "composition."};
+        var layer = sel[0];
+        var src = layer.source;
+        if (src instanceof FootageItem) {
+            if (src.file)
+                return {path: src.file.fsName,
+                        label: layer.name + " (" + src.name + ")"};
+            return {error: "The selected layer's footage has no file " +
+                           "on disk (generated or missing footage). " +
+                           "Pick a file instead."};
+        }
+        if (src instanceof CompItem) {
+            var safe = src.name.replace(/[^\w\- ]+/g, "_");
+            var tmp = new File(Folder.temp.fsName +
+                               "/AMVFX_selected_" + safe + ".mp4");
+            var rqItem = null;
+            try {
+                rqItem = app.project.renderQueue.items.add(src);
+                var om = rqItem.outputModules[1];
+                try { om.applyTemplate("H.264"); }
+                catch (e1) {
+                    try { om.applyTemplate("Lossless"); } catch (e2) {}
+                    tmp = new File(Folder.temp.fsName +
+                                   "/AMVFX_selected_" + safe + ".mov");
+                }
+                om.file = tmp;
+                app.project.renderQueue.render();
+                rqItem.remove();
+                if (tmp.exists)
+                    return {path: tmp.fsName,
+                            label: layer.name + " (rendered comp: " +
+                                   src.name + ")"};
+                return {error: "Rendering the selected composition " +
+                               "did not produce a file."};
+            } catch (e) {
+                try { if (rqItem) rqItem.remove(); } catch (e3) {}
+                return {error: "Could not render the selected " +
+                               "composition: " + e.toString()};
+            }
+        }
+        return {error: "The selected layer is not footage or a " +
+                       "composition - solids, text, shapes and cameras " +
+                       "can't be a pass source. Select a video layer " +
+                       "or a precomp."};
     }
 
     var panel = buildUI(thisObj);
