@@ -11,9 +11,27 @@ Two pools to pick from:
 - **Ideas pool** - bigger tools and directions kept in mind as
   references. Since 2026-11-16 the daily job **may also choose from
   this pool at its own discretion**; nothing here needs John's
-  explicit say-so anymore. The job uses judgment on size: a
-  research-scale idea is not a one-day item - break it into a small
-  shippable step or leave it parked.
+  explicit say-so anymore. An item that takes longer than a day is
+  fine too - it just ships as **WIP** until finished (protocol
+  below).
+
+## WIP protocol (multi-day items)
+
+When the daily job takes on something that cannot finish in one
+run, it is welcome to - under these rules:
+
+1. The item is marked **WIP (started <date>)** here in the roadmap
+   and stays the job's active item until it is done or abandoned;
+   each daily run continues it before picking anything new.
+2. User-facing surfaces carry the notice with them: a "WIP -
+   experimental, may not work yet" label in the app/panel, WIP
+   comments in the code, and WIP stated plainly in the day's report
+   and commit message.
+3. A WIP feature must never break the existing app: if it cannot
+   run yet, it ships disabled by default or clearly gated, and the
+   full test suite still passes.
+4. When it is finished and verified, the WIP labels come off and
+   the item moves to **Done**.
 
 ## Approved backlog (daily updates work from here first)
 
