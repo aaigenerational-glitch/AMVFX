@@ -35,32 +35,30 @@ run, it is welcome to - under these rules:
 
 ## Approved backlog (daily updates work from here first)
 
-1. **UI: job history** - the app remembers recent jobs (input, profile,
-   passes, output folder) and lists them under the generator.
-2. **UI: per-pass preview zoom** - click a preview to see it full-size
+1. **UI: per-pass preview zoom** - click a preview to see it full-size
    before downloading the ZIP.
-3. **Installer: repair mode** - re-running the installer over an
+2. **Installer: repair mode** - re-running the installer over an
    existing install refreshes files but keeps the venv and models
    (verify + document the behaviour, add a test).
-4. **Blender add-on: camera-from-plate** - optional camera whose
+3. **Blender add-on: camera-from-plate** - optional camera whose
    background is the source plate, matched to the plate aspect.
-5. **AE panel: comp naming** - name the built comp after the source
+4. **AE panel: comp naming** - name the built comp after the source
    file instead of a fixed string.
-6. **AE selected clip: respect layer in/out** - when the source comes
+5. **AE selected clip: respect layer in/out** - when the source comes
    from a timeline selection, trim generation to the layer's in/out
    points instead of the whole file.
-7. **Integrations polish (standing)** - regularly review the Blender
+6. **Integrations polish (standing)** - regularly review the Blender
    add-on and the AE panels for visual and UI improvements: layout,
    labels, icons, grouping, sensible defaults. Small, shippable steps.
-8. **Performance: model session cache** - reuse ONNX sessions across
+7. **Performance: model session cache** - reuse ONNX sessions across
    frames in a video job instead of re-creating them per frame
    (measure before/after on the 12-frame test clip).
-9. **Bug-fix sweep: paths with spaces** - audit installer, updater,
+8. **Bug-fix sweep: paths with spaces** - audit installer, updater,
    launcher and both add-ons for unquoted paths; fix and add tests.
-10. **Docs: quickstart GIF/screenshots** for the README and Pages site.
-11. **Updater: show what changed** - fetch the repo's recent commit
+9. **Docs: quickstart GIF/screenshots** for the README and Pages site.
+10. **Updater: show what changed** - fetch the repo's recent commit
     titles during "Check for updates" and list them before applying.
-12. **Tests: pipeline smoke test** - a 2-frame synthetic video through
+11. **Tests: pipeline smoke test** - a 2-frame synthetic video through
     the lite profile in CI-style local runs.
 
 ## Ideas pool (references the daily job may draw from)
@@ -104,6 +102,13 @@ it fits the passes workflow - in that order.
 
 ## Done
 
+- **2026-11-16 (v0.2.2)** - UI: **job history**. The app remembers
+  recent generation jobs (input, profile, passes, frames, resolution,
+  output folder) in `~/.amvfx/history.json` and lists them in a
+  "Recent jobs" accordion under the generator, with Refresh and Clear
+  buttons. New `amvfx/history.py` module + `tests/test_history.py`
+  (record/load, 20-entry cap, corrupt-file recovery, best-effort
+  writes that never break a job).
 - **2026-11-16 (v0.2.1)** - AE integration: **selected timeline clip
   as the source**. Both the ScriptUI panel and the CEP extension can
   now take the layer selected in the active comp: footage resolves to

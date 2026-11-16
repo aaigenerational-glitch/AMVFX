@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import gradio as gr
 
+from amvfx import history
 from amvfx.pipeline import LITE_PASSES, run
 
 GPU_AVAILABLE = False
@@ -55,7 +56,13 @@ def process(file_obj, profile, passes, progress=gr.Progress()):
             + (", per-pass MP4s" if manifest["exports"]["mp4_per_pass"] else "")
             + (" and multi-layer EXRs (Beeble-style layer names)."
                if manifest["exports"]["multilayer_exr"] else "."))
-    return previews, zip_path, note
+    # Remember this job for the "Recent jobs" list (best-effort: a
+    # history failure must never break a finished job).
+    history.record_job(src, profile, manifest["passes"], out_dir,
+                       manifest["frames"], manifest["resolution"],
+                       zip_path=zip_path)
+    history_md = history.format_history(history.load_history())
+    return previews, zip_path, note, history_md
 
 
 with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
@@ -81,7 +88,28 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
     gallery = gr.Gallery(label="Pass previews (frame 1)", columns=4)
     zip_out = gr.File(label="All passes (ZIP)")
     note_out = gr.Textbox(label="Job summary", interactive=False)
-    btn.click(process, [inp, profile, passes], [gallery, zip_out, note_out])
+
+    # ---------------- Recent jobs: remember what was run ----------------
+    def _refresh_history():
+        return history.format_history(history.load_history())
+
+    def _clear_history():
+        history.clear_history()
+        return history.format_history([])
+
+    with gr.Accordion("Recent jobs", open=False):
+        gr.Markdown("Recent generation jobs on this machine - input, "
+                    "profile, passes and output folder. Stored in "
+                    "~/.amvfx/history.json; app updates never wipe it.")
+        history_md = gr.Markdown(_refresh_history())
+        with gr.Row():
+            refresh_btn = gr.Button("Refresh")
+            clear_btn = gr.Button("Clear history")
+        refresh_btn.click(_refresh_history, None, history_md)
+        clear_btn.click(_clear_history, None, history_md)
+
+    btn.click(process, [inp, profile, passes],
+              [gallery, zip_out, note_out, history_md])
 
     # ---------------- Updates: check + install in place ----------------
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
