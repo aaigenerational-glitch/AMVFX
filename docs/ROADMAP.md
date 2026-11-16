@@ -1,9 +1,17 @@
 # AMVFX Roadmap
 
-How updates flow: the daily update job ships **one bounded item per
-day** - implement, test, bump the patch version, push to GitHub -
-and installed apps pick the change up from their **Updates** panel,
-no reinstall.
+How updates flow: since 2026-11-16 (John's direction) the daily
+update job ships a **bundle, not a single item** - one anchor item
+plus several smaller improvements in the same run, together with a
+research pass and extra checks (see "Daily bundle rule" below).
+Each bundle is implemented in reviewable increments, tested, given
+a version bump, and pushed to GitHub; installed apps pick the
+change up from their **Updates** panel, no reinstall.
+
+The north star: AMVFX should become an **essential tool for AMV
+editors** - fast, trustworthy VFX passes, a smooth AE/Blender
+round-trip, and scene-planning help (camera, lighting, motion)
+around the edit, not just a pass generator.
 
 Two pools to pick from:
 
@@ -21,8 +29,11 @@ When the daily job takes on something that cannot finish in one
 run, it is welcome to - under these rules:
 
 1. The item is marked **WIP (started <date>)** here in the roadmap
-   and stays the job's active item until it is done or abandoned;
-   each daily run continues it before picking anything new.
+   and stays the job's **anchor item** until it is done or
+   abandoned; each daily run continues it first - but the rest of
+   that day's bundle (smaller finished items, research, checks)
+   still ships around it, so a long WIP never freezes all other
+   progress.
 2. User-facing surfaces carry the notice with them: a "WIP -
    experimental, may not work yet" label in the app/panel, WIP
    comments in the code, and WIP stated plainly in the day's report
@@ -32,6 +43,37 @@ run, it is welcome to - under these rules:
    full test suite still passes.
 4. When it is finished and verified, the WIP labels come off and
    the item moves to **Done**.
+
+## Daily bundle rule (John, 2026-11-16)
+
+Each daily run aims for a **release bundle**, in this shape:
+
+1. **Anchor item** - the top backlog item, the continuing WIP, or
+   one ideas-pool pick (the day's main feature or fix).
+2. **Supporting items** - several smaller finished improvements in
+   the same run, spread across the app on purpose: a bug fix, a
+   UI/UX polish, an AE or Blender integration improvement, a
+   performance tweak, a test or docs improvement. Aim for roughly
+   **3-6 shipped pieces total** when the work supports it; quality
+   and passing tests beat hitting a count.
+3. **Research pass** - check official docs/release notes (Blender,
+   After Effects/CEP, Gradio, the models in MODELS.md), license
+   pages for any candidate model, and how AMV editors actually
+   work (camera moves, lighting setups, popular AE/Blender
+   workflows). Cross-check claims against at least two sources and
+   flag anything unsupported. Findings land here in the roadmap
+   (new backlog/ideas entries with a one-line verdict) - research
+   that changes nothing is still reported in one line.
+4. **Checks** - the full test suite plus the import check, and
+   targeted verification for whatever was touched (node --check
+   for ExtendScript, the headless Blender test for the add-on,
+   installer dry-run for installer changes). Each bundle piece is
+   its own increment: if one piece fails its checks and cannot be
+   fixed in the run, drop or revert **that piece** and ship the
+   rest - never ship a failing piece to make the bundle look
+   bigger, and never let one bad piece sink the whole day.
+5. **Report** - grouped: shipped pieces, research findings,
+   checks run, WIP state, next bundle's likely anchor.
 
 ## Approved backlog (daily updates work from here first)
 
@@ -79,6 +121,9 @@ run, it is welcome to - under these rules:
 | Motion vectors pass | Optical-flow MVs for post motion blur | RAFT flow | Useful in Nuke/AE; niche audience |
 | Frame interpolation | Slow-motion / fps conversion of passes | RIFE | Must interpolate all passes consistently |
 | Face / body tracking | Landmarks + segmentation for characters | MediaPipe | Different audience (VTuber/mocap); scope risk |
+| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only |
+| 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first |
+| Lighting + motion-path planner | Overlays showing key-light direction, shadow side, and subject/camera motion paths over the plate or stage | Normal/depth passes; vector overlays | Planning aid for AMV editors; starts as research/overlays, not a renderer |
 
 ### Vision / long-term reference (not a build item)
 
@@ -95,6 +140,21 @@ video + a simulation step); small stepping stones (e.g. a tracked
 ground-contact shadow/deformation plane) may be prototyped from the
 ideas pool, but the full vision stays parked until it is feasible in
 bounded steps.
+
+**AMV scene-planning stage (camera rig + 3D diorama).** John's
+concept, recorded 2026-11-16 as a *concept to keep in mind, not an
+implementation directive*: AMVFX grows toward overall 3D
+landscapes presented like a **diorama** of the shot, where an
+editor can see where their **camera** and **lighting** actually
+sit, the **directions** things face, and the **motion paths** of
+camera and subject - camera rigging for planning an edit, not
+just passes after the fact. Allowed today: research notes,
+paper/data-model sketches, and small bounded stepping stones from
+the ideas pool (camera-from-plate, ground plane, depth-layer
+stage, light-direction arrows, motion-path overlays). The full
+landscape/camera-rig suite stays long-term until it can be broken
+into bounded, testable steps - and anything partially built ships
+under the WIP protocol.
 
 Evaluation rule for the pool: license first (weights must allow the
 use), then VRAM/CPU reality on a normal creator machine, then whether
