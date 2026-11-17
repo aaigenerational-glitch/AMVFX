@@ -54,6 +54,16 @@ function amvfxOutFolder(srcPath) {
     return new Folder(src.parent.fsName + "/" + base + "_amvfx");
 }
 
+// Comp name for a built pass comp: "AMVFX_<source-stem>", e.g. source
+// "shot01.mp4" -> "AMVFX_shot01". (Was "AMVFX_" + the first imported
+// layer's name, which produced "AMVFX_AMVFX_source".)
+function amvfxCompName(fileName) {
+    var base = String(fileName || "").replace(/\.[^\.]+$/, "");
+    base = base.replace(/[^\w\- ]+/g, "_").replace(/^\s+|\s+$/g, "");
+    if (!base) base = "passes";
+    return "AMVFX_" + base;
+}
+
 function amvfxGenerate(args) {
     var p = args.split("|");
     var amvfxDir = p[0], py = p[1], src = p[2], profile = p[3], passes = p[4];
@@ -96,7 +106,8 @@ function amvfxImport(args) {
         if (!first) first = item;
     }
     if (!first) { app.endUndoGroup(); return "ERROR:no pass files"; }
-    var comp = proj.items.addComp("AMVFX_" + first.name, first.width,
+    var srcFile = new File(src);
+    var comp = proj.items.addComp(amvfxCompName(srcFile.name), first.width,
         first.height, first.pixelAspect, Math.max(first.duration, 1),
         first.frameRate || 30);
     for (var j = layers.length - 1; j >= 0; j--) comp.layers.add(layers[j]);

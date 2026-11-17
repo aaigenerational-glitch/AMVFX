@@ -12,6 +12,7 @@ installer alike:
     python -m amvfx.updater --apply
 """
 import io
+import json
 import os
 import shutil
 import sys
@@ -23,6 +24,8 @@ REPO = "aaigenerational-glitch/AMVFX"
 BRANCH = "main"
 VERSION_URL = (f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/VERSION")
 ZIPBALL_URL = f"https://codeload.github.com/{REPO}/zip/refs/heads/{BRANCH}"
+COMMITS_URL = (f"https://api.github.com/repos/{REPO}/commits"
+               f"?sha={BRANCH}&per_page=")
 
 # Files/dirs an update is allowed to overwrite (mirrors the installer).
 UPDATE_ITEMS = ["app.py", "launch_amvfx.py", "amvfx", "requirements.txt",
@@ -70,6 +73,39 @@ def remote_version():
     return _fetch(VERSION_URL).decode("utf-8", "replace").strip()
 
 
+def recent_commits(limit=5):
+    """Return the latest commits on main as [{sha, message, date}].
+
+    Uses the public GitHub REST commits endpoint (unauthenticated:
+    60 requests/hour, and "Check for updates" makes one call, so this
+    is well inside the budget). Any failure — offline, rate-limited,
+    unexpected payload — returns [] instead of raising: the update
+    check must never fail because the changelog could not be fetched.
+    """
+    try:
+        n = max(1, min(int(limit), 20))
+    except (TypeError, ValueError):
+        n = 5
+    try:
+        raw = _fetch(COMMITS_URL + str(n))
+        data = json.loads(raw.decode("utf-8", "replace"))
+    except Exception:
+        return []
+    commits = []
+    if isinstance(data, list):
+        for c in data:
+            if not isinstance(c, dict):
+                continue
+            inner = c.get("commit") or {}
+            msg = inner.get("message") or ""
+            commits.append({
+                "sha": (c.get("sha") or "")[:7],
+                "message": msg.splitlines()[0].strip() if msg else "",
+                "date": (inner.get("committer") or {}).get("date", ""),
+            })
+    return commits
+
+
 def check_for_update(app_dir):
     """Return {current, latest, update_available} or {error: ...}."""
     current = local_version(app_dir)
@@ -78,8 +114,10 @@ def check_for_update(app_dir):
     except Exception as exc:
         return {"current": current, "latest": None,
                 "update_available": False, "error": str(exc)}
+    available = is_newer(latest, current)
     return {"current": current, "latest": latest,
-            "update_available": is_newer(latest, current), "error": None}
+            "update_available": available, "error": None,
+            "recent_commits": recent_commits() if available else []}
 
 
 def apply_update(app_dir, source=None, log=print):
@@ -145,6 +183,8 @@ def main(argv=None):
     if info["update_available"]:
         print(f"Update available: v{info['current']} -> v{info['latest']} "
               "(run with --apply to install it)")
+        for c in info.get("recent_commits") or []:
+            print(f"  {c['sha']} {c['message']}")
     else:
         print(f"AMVFX v{info['current']} is up to date.")
     return 0

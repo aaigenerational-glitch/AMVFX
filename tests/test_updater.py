@@ -2,6 +2,7 @@
 fixture ZIP (no network). The .venv must survive an update untouched.
 Run: python tests/test_updater.py
 """
+import json
 import os
 import sys
 import tempfile
@@ -11,6 +12,45 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from amvfx import updater  # noqa: E402
+
+
+def test_recent_commits_parses_github_payload():
+    fixture = [
+        {"sha": "abc1234deadbeef",
+         "commit": {"message": "v0.3.0: preview zoom\n\nLong body here.",
+                    "committer": {"date": "2026-11-17T10:00:00Z"}}},
+        {"sha": "def5678",
+         "commit": {"message": "Docs: roadmap note",
+                    "committer": {"date": "2026-11-16T09:00:00Z"}}},
+    ]
+    real_fetch = updater._fetch
+    updater._fetch = lambda url: json.dumps(fixture).encode("utf-8")
+    try:
+        got = updater.recent_commits(limit=5)
+    finally:
+        updater._fetch = real_fetch
+    assert got == [
+        {"sha": "abc1234", "message": "v0.3.0: preview zoom",
+         "date": "2026-11-17T10:00:00Z"},
+        {"sha": "def5678", "message": "Docs: roadmap note",
+         "date": "2026-11-16T09:00:00Z"},
+    ], got
+    print("PASS test_recent_commits_parses_github_payload")
+
+
+def test_recent_commits_never_raises():
+    real_fetch = updater._fetch
+    updater._fetch = lambda url: (_ for _ in ()).throw(RuntimeError("offline"))
+    try:
+        assert updater.recent_commits() == []
+    finally:
+        updater._fetch = real_fetch
+    updater._fetch = lambda url: b"not json at all"
+    try:
+        assert updater.recent_commits() == []
+    finally:
+        updater._fetch = real_fetch
+    print("PASS test_recent_commits_never_raises")
 
 
 def _write(path, text):
@@ -60,4 +100,6 @@ def test_apply_update_in_place():
 if __name__ == "__main__":
     test_version_compare()
     test_apply_update_in_place()
+    test_recent_commits_parses_github_payload()
+    test_recent_commits_never_raises()
     print("all updater tests passed")

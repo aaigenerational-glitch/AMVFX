@@ -22,6 +22,16 @@
                   "roughness", "metallic", "specular", "ao"];
     var isWin = ($.os.indexOf("Windows") !== -1);
 
+    // Comp name for a built pass comp: "AMVFX_<source-stem>", e.g.
+    // source "shot01.mp4" -> "AMVFX_shot01". (Was "AMVFX_" + the first
+    // imported layer's name, which produced "AMVFX_AMVFX_source".)
+    function amvfxCompName(fileName) {
+        var base = String(fileName || "").replace(/\.[^\.]+$/, "");
+        base = base.replace(/[^\w\- ]+/g, "_").replace(/^\s+|\s+$/g, "");
+        if (!base) base = "passes";
+        return "AMVFX_" + base;
+    }
+
     function buildUI(thisObj) {
         var pal = (thisObj instanceof Panel)
             ? thisObj
@@ -158,8 +168,9 @@
                 app.endUndoGroup();
                 return;
             }
-            var comp = proj.items.addComp("AMVFX_" + first.name, first.width,
-                first.height, first.pixelAspect,
+            var srcFile = new File(srcPath.text);
+            var comp = proj.items.addComp(amvfxCompName(srcFile.name),
+                first.width, first.height, first.pixelAspect,
                 Math.max(first.duration, 1), first.frameRate || 30);
             // source at the bottom, remaining passes stacked above it
             for (i = layers.length - 1; i >= 0; i--)

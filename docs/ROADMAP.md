@@ -77,31 +77,25 @@ Each daily run aims for a **release bundle**, in this shape:
 
 ## Approved backlog (daily updates work from here first)
 
-1. **UI: per-pass preview zoom** - click a preview to see it full-size
-   before downloading the ZIP.
-2. **Installer: repair mode** - re-running the installer over an
+1. **Installer: repair mode** - re-running the installer over an
    existing install refreshes files but keeps the venv and models
    (verify + document the behaviour, add a test).
-3. **Blender add-on: camera-from-plate** - optional camera whose
+2. **Blender add-on: camera-from-plate** - optional camera whose
    background is the source plate, matched to the plate aspect.
-4. **AE panel: comp naming** - name the built comp after the source
-   file instead of a fixed string.
-5. **AE selected clip: respect layer in/out** - when the source comes
+3. **AE selected clip: respect layer in/out** - when the source comes
    from a timeline selection, trim generation to the layer's in/out
    points instead of the whole file.
-6. **Integrations polish (standing)** - regularly review the Blender
+4. **Integrations polish (standing)** - regularly review the Blender
    add-on and the AE panels for visual and UI improvements: layout,
    labels, icons, grouping, sensible defaults. Small, shippable steps.
-7. **Performance: model session cache** - reuse ONNX sessions across
+5. **Performance: model session cache** - reuse ONNX sessions across
    frames in a video job instead of re-creating them per frame
    (measure before/after on the 12-frame test clip).
-8. **Bug-fix sweep: paths with spaces** - audit installer, updater,
+6. **Bug-fix sweep: paths with spaces** - audit installer, updater,
    launcher and both add-ons for unquoted paths; fix and add tests.
-9. **Docs: quickstart GIF/screenshots** for the README and Pages site.
-10. **Updater: show what changed** - fetch the repo's recent commit
-    titles during "Check for updates" and list them before applying.
-11. **Tests: pipeline smoke test** - a 2-frame synthetic video through
-    the lite profile in CI-style local runs.
+7. **Docs: quickstart GIF/screenshots** for the README and Pages site.
+8. **Tests: pipeline smoke test** - a 2-frame synthetic video through
+   the lite profile in CI-style local runs.
 
 ## Ideas pool (references the daily job may draw from)
 
@@ -124,6 +118,7 @@ Each daily run aims for a **release bundle**, in this shape:
 | Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only |
 | 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first |
 | Lighting + motion-path planner | Overlays showing key-light direction, shadow side, and subject/camera motion paths over the plate or stage | Normal/depth passes; vector overlays | Planning aid for AMV editors; starts as research/overlays, not a renderer |
+| Depth-map 3D lighting guide | Show editors how to turn the depth pass into real 3D geometry (AE displacement / Blender displacement, both already in AMVFX) and throw a point light at it, so a flat clip can be relit in 3D | Existing depth pass + Blender add-on displacement | Research 2026-11-17: AMV tutorials already teach this exact move with generated depth maps ("3D Lighting with Depth Maps in After Effects", amvtutorial.com) and AE 2025+ native 3D camera/spotlight setups; a worked guide + preset fits the scene-planning track — docs-sized, not a new model |
 
 ### Vision / long-term reference (not a build item)
 
@@ -162,6 +157,18 @@ it fits the passes workflow - in that order.
 
 ## Done
 
+- **2026-11-17 (v0.3.0)** - UI: **per-pass preview zoom**. Clicking a
+  gallery thumbnail now shows that pass full-size in a persistent
+  "Selected pass" viewer under the gallery (new `amvfx/preview.py` +
+  `tests/test_preview.py`); the gallery also keeps its built-in
+  lightbox (`allow_preview`, on by default in Gradio 6.31 — verified
+  against the installed version's docs and signature, so this item
+  was really about the persistent viewer, not the lightbox). Same
+  bundle: **updater shows what changed** (latest commit subjects
+  from the GitHub commits API, unauthenticated 60/hr, degrades to
+  silence offline — `updater.recent_commits()` + tests) and **AE
+  comp naming** (both panels now build `AMVFX_<source-stem>` instead
+  of `AMVFX_AMVFX_source`; JSX syntax-checked only, never run in AE).
 - **2026-11-16 (v0.2.2)** - UI: **job history**. The app remembers
   recent generation jobs (input, profile, passes, frames, resolution,
   output folder) in `~/.amvfx/history.json` and lists them in a

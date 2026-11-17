@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import gradio as gr
 
-from amvfx import history
+from amvfx import history, preview
 from amvfx.pipeline import LITE_PASSES, run
 
 GPU_AVAILABLE = False
@@ -62,7 +62,10 @@ def process(file_obj, profile, passes, progress=gr.Progress()):
                        manifest["frames"], manifest["resolution"],
                        zip_path=zip_path)
     history_md = history.format_history(history.load_history())
-    return previews, zip_path, note, history_md
+    # Full-size viewer defaults to the first pass; clicking a thumbnail
+    # below swaps it (see gallery.select handler).
+    zoom_path, zoom_label = preview.select_preview(previews, 0)
+    return previews, zoom_path, zoom_label, zip_path, note, history_md
 
 
 with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
@@ -85,7 +88,22 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
                 value=["source", "alpha", "depth", "normal"],
                 label="Passes (gpu profile needed for basecolor/roughness/metallic/specular)")
             btn = gr.Button("Generate passes", variant="primary")
-    gallery = gr.Gallery(label="Pass previews (frame 1)", columns=4)
+    gallery = gr.Gallery(
+        label="Pass previews (frame 1) — click a thumbnail to zoom",
+        columns=4, allow_preview=True)
+    # Persistent full-size viewer: clicking a thumbnail above swaps
+    # this to that pass at full resolution (the gallery's own lightbox
+    # is transient). The full ZIP download is below; the gallery
+    # lightbox also offers a per-image download button.
+    zoom = gr.Image(label="Selected pass (full size)")
+    zoom_name = gr.Textbox(label="Zoomed pass", interactive=False,
+                           value="No preview selected")
+
+    def _on_preview_select(previews, evt: gr.SelectData):
+        return preview.select_preview(previews, evt.index)
+
+    gallery.select(_on_preview_select, [gallery], [zoom, zoom_name])
+
     zip_out = gr.File(label="All passes (ZIP)")
     note_out = gr.Textbox(label="Job summary", interactive=False)
 
@@ -109,7 +127,7 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
         clear_btn.click(_clear_history, None, history_md)
 
     btn.click(process, [inp, profile, passes],
-              [gallery, zip_out, note_out, history_md])
+              [gallery, zoom, zoom_name, zip_out, note_out, history_md])
 
     # ---------------- Updates: check + install in place ----------------
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -122,10 +140,15 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
             return (f"You are on v{info['current']}. Could not reach "
                     f"GitHub to check for updates.")
         if info["update_available"]:
-            return (f"Update available: v{info['current']} -> "
-                    f"v{info['latest']}. 'Update now' installs it in "
-                    "place - models, venv and settings are kept - then "
-                    "restart the app.")
+            msg = (f"Update available: v{info['current']} -> "
+                   f"v{info['latest']}. 'Update now' installs it in "
+                   "place - models, venv and settings are kept - then "
+                   "restart the app.")
+            commits = info.get("recent_commits") or []
+            if commits:
+                msg += "\n\nWhat changed:\n" + "\n".join(
+                    f"- {c['sha']} {c['message']}" for c in commits)
+            return msg
         return f"You are up to date (v{info['current']})."
 
     def _apply_update():
