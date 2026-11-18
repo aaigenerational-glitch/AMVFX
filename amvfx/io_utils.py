@@ -92,11 +92,18 @@ def read_exr_layers(path: str):
     return sorted(out.keys()), out
 
 
-def extract_frames(video_path: str, max_frames: int = 0, max_width: int = 0):
+def extract_frames(video_path: str, max_frames: int = 0, max_width: int = 0,
+                   start_frame: int = 0, end_frame: int = 0):
     """Decode a video to a list of RGB float frames [0,1] + fps.
 
     Uses OpenCV (already a hard dependency). Image inputs should be
     handled by load_image instead.
+
+    start_frame / end_frame trim the clip by frame index (end exclusive,
+    0 = to the end) - this is how the After Effects panel honours a
+    timeline layer's in/out points instead of generating the whole file.
+    Frames before start_frame are skipped by sequential decode, which
+    stays exact on codecs where seeking lands on keyframes.
     """
     import cv2
     cap = cv2.VideoCapture(video_path)
@@ -104,15 +111,22 @@ def extract_frames(video_path: str, max_frames: int = 0, max_width: int = 0):
         raise RuntimeError(f"Could not open video: {video_path}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
     frames = []
+    idx = 0
     while True:
         ok, bgr = cap.read()
         if not ok:
+            break
+        if idx < start_frame:
+            idx += 1
+            continue
+        if end_frame and idx >= end_frame:
             break
         if max_width and bgr.shape[1] > max_width:
             scale = max_width / bgr.shape[1]
             bgr = cv2.resize(bgr, (max_width, int(bgr.shape[0] * scale)),
                              interpolation=cv2.INTER_AREA)
         frames.append(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0)
+        idx += 1
         if max_frames and len(frames) >= max_frames:
             break
     cap.release()

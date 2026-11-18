@@ -25,7 +25,7 @@ recording exactly which model (or derivation) produced each pass.
 | NVIDIA Cosmos DiffusionRenderer (`nv-tlabs/cosmos-transfer1-diffusion-renderer`) | Single unified video G-buffer model (basecolor, normal, depth, roughness, metallic) + forward relighting — the closest open analogue to SwitchLight | Code Apache-2.0; weights NVIDIA Open Model License; needs ~27–48 GB VRAM for video |
 | Video Depth Anything / DepthCrafter | Temporally consistent video depth (replaces per-frame depth + clip-wide normalization) | Check per-checkpoint license |
 | NormalCrafter | Temporally consistent video normals | Check license |
-| MatAnyone 2 | Memory-propagated video matting (Beeble itself licenses this model for its Background Remover) | S-Lab license — verify terms before any commercial use |
+| MatAnyone 2 | Memory-propagated video matting (Beeble itself licenses this model for its Background Remover) | NTU S-Lab License 1.0 — non-commercial free, commercial use needs author permission (verified 2026-11-18). **Not a default/commercial-safe alpha backend**; research-only, opt-in non-commercial experiment at most |
 | RGB↔X (`zheng95z/rgb-to-x`) | Alternative albedo/roughness/metallic/normals estimator, interior scenes | Check repo license |
 | BRIA RMBG-2.0 | Strong alpha model | ❌ CC-BY-NC for open weights — **not used** |
 

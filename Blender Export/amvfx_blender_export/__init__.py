@@ -37,14 +37,16 @@ from bpy.types import Operator, Panel, PropertyGroup
 bl_info = {
     "name": "AMVFX Blender Export",
     "author": "AMVFX",
-    "version": (0, 2, 0),
+    "version": (0, 3, 0),
     "blender": (3, 6, 0),
     "location": "3D Viewport > Sidebar > AMVFX",
     "description": "Build a relightable PBR plate (with optional Z-depth "
-                   "displacement) from an AMVFX job folder.",
+                   "displacement) from an AMVFX job folder, plus a camera "
+                   "matched to the plate for planning moves.",
     "category": "Material",
 }
 
+CAM_NAME = "AMVFX_Camera"
 GROUP_NAME = "AMVFX_PBR"
 MAT_NAME = "AMVFX_Plate"
 OBJ_NAME = "AMVFX_Plate"
@@ -423,6 +425,89 @@ def build_plate(context):
                  f"{'ON' if props.z_depth_enabled else 'off'}.")
 
 
+def build_camera(context):
+    """Camera-from-plate (roadmap backlog #2): a camera matched to the
+    source plate, so editors can plan moves against the shot.
+
+    * creates (or reuses) an AMVFX_Camera and makes it the scene camera,
+    * sets the render resolution to the plate's pixel size,
+    * shows the source plate as the camera's background image
+      (FIT frame method, full opacity, behind the scene),
+    * frames the 2-unit plate plane from the camera's vertical FOV.
+    """
+    import math
+
+    props = context.scene.amvfx
+    job = bpy.path.abspath(props.job_dir)
+    if not job or not os.path.isdir(job):
+        return None, "Pick an AMVFX job folder first."
+
+    frame_count = 1
+    manifest_path = os.path.join(job, "manifest.json")
+    if os.path.isfile(manifest_path):
+        try:
+            with open(manifest_path) as f:
+                frame_count = int(json.load(f).get("frames", 1))
+        except Exception:
+            pass
+
+    # plate image: prefer the per-pass movie, else the PNG sequence
+    img = None
+    if props.prefer_mp4:
+        mp4 = os.path.join(job, "source.mp4")
+        if os.path.isfile(mp4):
+            img = bpy.data.images.load(mp4)
+            img.source = "MOVIE"
+    if img is None:
+        files = _pass_files(job, "source") or _pass_files(job, "basecolor") \
+            or _pass_files(job, "depth")
+        if not files:
+            return None, "No source plate found in the job folder."
+        img = bpy.data.images.load(files[0])
+        if len(files) > 1:
+            img.source = "SEQUENCE"
+            img.frame_duration = max(1, frame_count)
+    if not img.size[0] or not img.size[1]:
+        return None, "Source plate has no size - cannot match a camera."
+    width, height = img.size[0], img.size[1]
+
+    cam_data = bpy.data.cameras.get(CAM_NAME) or \
+        bpy.data.cameras.new(CAM_NAME)
+    cam_data.show_background_images = True
+    # replace any earlier AMVFX background image on this camera
+    for bg in list(cam_data.background_images):
+        if bg.image is not None and bg.image.name == img.name:
+            cam_data.background_images.remove(bg)
+    bg = cam_data.background_images.new()
+    bg.image = img
+    bg.frame_method = "FIT"
+    bg.alpha = 1.0
+    bg.depth = "BACK"
+
+    obj = bpy.data.objects.get(CAM_NAME)
+    if obj is None:
+        obj = bpy.data.objects.new(CAM_NAME, cam_data)
+        context.collection.objects.link(obj)
+    else:
+        obj.data = cam_data
+    context.scene.camera = obj
+
+    scene = context.scene
+    scene.render.resolution_x = width
+    scene.render.resolution_y = height
+    scene.render.resolution_percentage = 100
+
+    # frame the plate plane (2 units tall, centred on the origin):
+    # distance so the plane height fits the vertical FOV, +10% margin
+    angle = cam_data.angle  # vertical field of view, radians
+    dist = 1.1 / math.tan(angle / 2.0)
+    obj.location = (0.0, 0.0, dist)
+    obj.rotation_euler = (0.0, 0.0, 0.0)  # looks down -Z, at the plate
+    cam_data.clip_end = max(100.0, dist * 10.0)
+    return (obj, f"Camera from plate: {width}x{height}, "
+                 f"background = {img.name}, distance {dist:.2f}.")
+
+
 # --------------------------------------------------------------------------
 # operators + panel
 # --------------------------------------------------------------------------
@@ -434,6 +519,20 @@ class AMVFX_OT_build(Operator):
 
     def execute(self, context):
         result, msg = build_plate(context)
+        if result is None:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class AMVFX_OT_camera(Operator):
+    bl_idname = "amvfx.add_camera"
+    bl_label = "Add Camera from Plate"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        result, msg = build_camera(context)
         if result is None:
             self.report({"ERROR"}, msg)
             return {"CANCELLED"}
@@ -481,6 +580,7 @@ class AMVFX_PT_panel(Panel):
         layout.prop(props, "job_dir")
         layout.prop(props, "prefer_mp4")
         layout.operator("amvfx.build_plate", icon="MATERIAL")
+        layout.operator("amvfx.add_camera", icon="CAMERA_DATA")
         box = layout.box()
         box.label(text="Z-Depth Displacement", icon="MOD_DISPLACE")
         box.prop(props, "z_depth_enabled")
@@ -495,7 +595,8 @@ class AMVFX_PT_panel(Panel):
         layout.label(text="the AMVFX_PBR group node in the Shader Editor.")
 
 
-classes = (AMVFXProps, AMVFX_OT_build, AMVFX_OT_compositor, AMVFX_PT_panel)
+classes = (AMVFXProps, AMVFX_OT_build, AMVFX_OT_camera,
+           AMVFX_OT_compositor, AMVFX_PT_panel)
 
 
 def register():

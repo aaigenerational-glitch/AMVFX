@@ -30,9 +30,15 @@ def main(argv=None):
     ap.add_argument("--marigold-steps", type=int, default=4)
     ap.add_argument("--max-frames", type=int, default=0)
     ap.add_argument("--max-width", type=int, default=0)
+    ap.add_argument("--start-frame", type=int, default=0,
+                    help="trim a video: first frame to process (0 = start)")
+    ap.add_argument("--end-frame", type=int, default=0,
+                    help="trim a video: frame to stop before (0 = to the end)")
     ap.add_argument("--no-mp4", action="store_true")
     ap.add_argument("--no-exr", action="store_true")
     args = ap.parse_args(argv)
+    if args.end_frame and args.end_frame <= args.start_frame:
+        ap.error("--end-frame must be greater than --start-frame")
     passes = [p.strip() for p in args.passes.split(",") if p.strip()] or None
     manifest = run(args.input, args.out, profile=args.profile, passes=passes,
                    alpha_quality=args.alpha_quality,
@@ -40,6 +46,7 @@ def main(argv=None):
                    normal_format=args.normal_format,
                    normal_backend=args.normal_backend,
                    max_frames=args.max_frames, max_width=args.max_width,
+                   start_frame=args.start_frame, end_frame=args.end_frame,
                    export_mp4=not args.no_mp4, export_exr=not args.no_exr,
                    progress=lambda m: print(f"[amvfx] {m}", flush=True))
     print(json.dumps(manifest, indent=2))

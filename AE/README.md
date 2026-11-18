@@ -37,10 +37,13 @@ Both panels offer two source modes:
   - anything else (solid, text, shape, camera, footage with no file)
     reports a plain-language error instead of guessing.
 
-Notes: generation runs on the **whole source file** — a layer's
-in/out trim is not applied yet (roadmap item). Passes are imported and
-stacked into a new comp as before, so the generated layers line up
-with the plate you selected.
+Notes: generation is trimmed to the layer's **in/out points** —
+the panel passes `--start-frame/--end-frame` to the CLI, so only that
+range is generated (frame indices in the source file, mapped from comp
+time via the layer's startTime and stretch; still images and reversed
+layers fall back to the whole file). The manifest records the range as
+`frame_range`. Passes are imported and stacked into a new comp as
+before, so the generated layers line up with the plate you selected.
 
 ## Option 2 — CEP extension (`.zxp` source)
 

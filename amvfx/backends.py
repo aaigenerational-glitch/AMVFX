@@ -18,6 +18,11 @@ import numpy as np
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
+# Process-wide ONNX session cache, keyed by (repo_id, filename).
+# See _onnx_session: sessions are expensive to create and are reused
+# across generate() calls in the same process.
+_SESSION_CACHE = {}
+
 
 def _onnx_session(repo_id: str, filename: str = None):
     import onnxruntime as ort
@@ -35,6 +40,14 @@ def _onnx_session(repo_id: str, filename: str = None):
             raise RuntimeError(f"No ONNX graph found in {repo_id}")
     else:
         path = hf_hub_download(repo_id, filename)
+    # Process-wide session cache: creating an ORT session costs real
+    # time (graph load + optimisation), and a long-running host (the
+    # Gradio app) runs generate() once per job. Reusing the session
+    # across jobs skips that cost; sessions are only ever used
+    # sequentially here, never concurrently. Keyed by (repo, file).
+    key = (repo_id, filename)
+    if key in _SESSION_CACHE:
+        return _SESSION_CACHE[key]
     # Memory-frugal session: the default ORT arena can balloon RSS and get
     # the process OOM-killed on small machines (verified on a 7 GB VM with
     # the 1024px BiRefNet export).
@@ -44,7 +57,14 @@ def _onnx_session(repo_id: str, filename: str = None):
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     sess = ort.InferenceSession(path, sess_options=opts,
                                 providers=["CPUExecutionProvider"])
+    _SESSION_CACHE[key] = sess
     return sess
+
+
+def clear_session_cache():
+    """Drop cached ONNX sessions (tests, and hosts that want memory back
+    after a long run). Next backend construction rebuilds its session."""
+    _SESSION_CACHE.clear()
 
 
 def _prep(sess, frame: np.ndarray, size_hw):
@@ -275,8 +295,10 @@ class MoGeBackend:
         depth = out["depth"].detach().cpu().numpy().astype(np.float32)
         depth = np.where(np.isfinite(depth), depth, 0.0)
         normal = out["normal"].detach().cpu().numpy().astype(np.float32)
-        # MoGe normals are OpenCV camera-space unit vectors (y down);
-        # convert to OpenGL image convention (y up) for VFX passes.
+        # MoGe normals are OpenCV camera-space unit vectors (y down,
+        # z into the screen); convert to the OpenGL image convention
+        # (y up, z out of the screen toward the viewer).
         normal[..., 1] *= -1.0
+        normal[..., 2] *= -1.0
         normal = normal * 0.5 + 0.5
         return depth, np.clip(normal, 0, 1).astype(np.float32)

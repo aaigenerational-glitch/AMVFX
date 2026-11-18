@@ -77,32 +77,29 @@ Each daily run aims for a **release bundle**, in this shape:
 
 ## Approved backlog (daily updates work from here first)
 
-1. **Installer: repair mode** - re-running the installer over an
-   existing install refreshes files but keeps the venv and models
-   (verify + document the behaviour, add a test).
-2. **Blender add-on: camera-from-plate** - optional camera whose
-   background is the source plate, matched to the plate aspect.
-3. **AE selected clip: respect layer in/out** - when the source comes
-   from a timeline selection, trim generation to the layer's in/out
-   points instead of the whole file.
-4. **Integrations polish (standing)** - regularly review the Blender
+1. **Integrations polish (standing)** - regularly review the Blender
    add-on and the AE panels for visual and UI improvements: layout,
    labels, icons, grouping, sensible defaults. Small, shippable steps.
-5. **Performance: model session cache** - reuse ONNX sessions across
-   frames in a video job instead of re-creating them per frame
-   (measure before/after on the 12-frame test clip).
-6. **Bug-fix sweep: paths with spaces** - audit installer, updater,
+2. **Bug-fix sweep: paths with spaces** - audit installer, updater,
    launcher and both add-ons for unquoted paths; fix and add tests.
-7. **Docs: quickstart GIF/screenshots** for the README and Pages site.
-8. **Tests: pipeline smoke test** - a 2-frame synthetic video through
-   the lite profile in CI-style local runs.
+   (Partial 2026-11-18, v0.4.0: audit found all subprocess calls are
+   already list-form; fixed the two real gaps - PowerShell single-quote
+   escaping in the installer shortcut, quote-stripping in both JSX
+   generate commands - plus a unit test. Remaining: re-audit after
+   future subprocess additions; item stays open.)
+3. **Docs: quickstart GIF/screenshots** for the README and Pages site.
+4. **Tests: pipeline smoke test** - a 2-frame synthetic video through
+   the lite profile in CI-style local runs. (Partially covered
+   2026-11-18: the trim tests build a synthetic video and a real
+   12-frame lite run with --start-frame/--end-frame was verified by
+   hand; a permanent suite-level smoke test is still open.)
 
 ## Ideas pool (references the daily job may draw from)
 
 | Tool / direction | What it would do | Candidate open tech | Notes |
 |---|---|---|---|
-| Rotobrush-style propagation | Paint a mask on one frame, propagate it through the shot | SAM 2 / SAM 3 video segmentation | GPU-heavy; needs an interactive UI, not just a pass |
-| Video matte refinement | Cleaner, temporally stable alpha for hair/edges | MatAnyone 2 | License check first (research licenses in this family) |
+| Rotobrush-style propagation | Paint a mask on one frame, propagate it through the shot | SAM 2 / SAM 3 video segmentation | License VERIFIED 2026-11-18: SAM 2.1 code + checkpoints are Apache-2.0 (Meta paper, PyPI LICENSE) — license-clear. SAM 3 is a separate gated Meta licence — do NOT use. GPU-heavy; needs an interactive UI, not just a pass |
+| Video matte refinement | Cleaner, temporally stable alpha for hair/edges | MatAnyone 2 | License VERIFIED 2026-11-18: NTU S-Lab License 1.0 — non-commercial free, commercial use needs author permission (Beeble licenses it directly). NOT a default/commercial-safe backend; research-only, opt-in non-commercial experiment at most |
 | Per-object passes | Cryptomatte-style object ID pass + per-object normals | SAM 2 masks + existing passes | Offered 2026-10-30 as a separate build |
 | Chroma keyer | Green/blue-screen keying pass as an alpha alternative | Classic keying math (no model) | Cheap to build; quality bar vs BiRefNet unclear |
 | Object removal / inpainting | Erase a masked object across frames | ProPainter, LaMa | GPU-heavy; big quality variance |
@@ -115,7 +112,7 @@ Each daily run aims for a **release bundle**, in this shape:
 | Motion vectors pass | Optical-flow MVs for post motion blur | RAFT flow | Useful in Nuke/AE; niche audience |
 | Frame interpolation | Slow-motion / fps conversion of passes | RIFE | Must interpolate all passes consistently |
 | Face / body tracking | Landmarks + segmentation for characters | MediaPipe | Different audience (VTuber/mocap); scope risk |
-| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only |
+| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only. First stone SHIPPED 2026-11-18 (v0.4.0): camera-from-plate in the Blender add-on (background image + render res + framing). Next stones: ground plane, light-direction overlay |
 | 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first |
 | Lighting + motion-path planner | Overlays showing key-light direction, shadow side, and subject/camera motion paths over the plate or stage | Normal/depth passes; vector overlays | Planning aid for AMV editors; starts as research/overlays, not a renderer |
 | Depth-map 3D lighting guide | Show editors how to turn the depth pass into real 3D geometry (AE displacement / Blender displacement, both already in AMVFX) and throw a point light at it, so a flat clip can be relit in 3D | Existing depth pass + Blender add-on displacement | Research 2026-11-17: AMV tutorials already teach this exact move with generated depth maps ("3D Lighting with Depth Maps in After Effects", amvtutorial.com) and AE 2025+ native 3D camera/spotlight setups; a worked guide + preset fits the scene-planning track — docs-sized, not a new model |
@@ -157,6 +154,35 @@ it fits the passes workflow - in that order.
 
 ## Done
 
+- **2026-11-18 (v0.4.0)** - **Installer: repair mode** (`--repair`
+  flag + GUI checkbox): refreshes app files and add-ons, keeps the
+  existing venv (no recreate, no pip reinstall) and local models;
+  errors clearly on a fresh target, and a plain re-run over an
+  existing install now hints at `--repair` (`installer/install.py` +
+  `tests/test_installer.py`). **Blender add-on: camera-from-plate**
+  (new `amvfx.add_camera` operator + panel button): creates/reuses
+  `AMVFX_Camera`, sets it as scene camera, render resolution from the
+  plate pixels, source plate as camera background image (FIT, behind
+  the scene), camera framed on the plate from its vertical FOV
+  (headless test extended in `tests/test_blender_addon.py` — not
+  runnable on the dev VM, which has no Blender binary). **AE selected
+  clip: respect layer in/out**: CLI `--start-frame/--end-frame`
+  (end exclusive), `pipeline.run` + `extract_frames` support,
+  `frame_range` in the manifest; both AE panels map the selected
+  layer's in/out points (comp time -> source frames via startTime and
+  stretch; reversed layers fall back to whole file) — `tests/test_trim.py`
+  plus a real 12-frame lite run trimmed 3..8 verified by hand.
+  **Performance: model session cache** — ONNX sessions cached
+  process-wide in `backends.py` (`clear_session_cache()` for tests);
+  measured on this VM: repeat-job construction 1.86s -> 0.20s (Depth)
+  and 9.43s -> 0.71s (BiRefNet), ~10.4s saved per repeat lite job.
+  **Bug-fix sweep (partial)**: PowerShell single-quote escaping in the
+  installer shortcut + quote-stripping `q()` in both JSX generate
+  commands; audit found all subprocess calls already list-form.
+  Research 2026-11-18: SAM 2.1 Apache-2.0 verified (SAM 3 gated, avoid);
+  MatAnyone 2 S-Lab 1.0 non-commercial-only verified; Blender camera
+  background images and AE `inPoint`/`outPoint` confirmed in official
+  docs.
 - **2026-11-17 (v0.3.0)** - UI: **per-pass preview zoom**. Clicking a
   gallery thumbnail now shows that pass full-size in a persistent
   "Selected pass" viewer under the gallery (new `amvfx/preview.py` +

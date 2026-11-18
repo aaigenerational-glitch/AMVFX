@@ -140,16 +140,20 @@ def run(input_path: str, out_dir: str, profile: str = "lite", passes=None,
         alpha_quality: bool = False, marigold_steps: int = 4,
         normal_format: str = "opengl", normal_backend: str = "auto",
         max_frames: int = 0, max_width: int = 0,
+        start_frame: int = 0, end_frame: int = 0,
         export_png: bool = True, export_mp4: bool = True,
         export_exr: bool = True, progress=None):
     """Full job: load input, generate passes, export Beeble-style outputs.
 
-    Returns the manifest dict (also written to out_dir/manifest.json).
+    start_frame / end_frame trim a video by frame index (end exclusive);
+    the manifest records the range so a trimmed job is reproducible.
     """
     ext = os.path.splitext(input_path)[1].lower()
     is_video = ext in (".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v")
     if is_video:
-        frames, fps = io_utils.extract_frames(input_path, max_frames, max_width)
+        frames, fps = io_utils.extract_frames(input_path, max_frames,
+                                              max_width, start_frame,
+                                              end_frame)
     else:
         frames, fps = [io_utils.load_image(input_path, max_width)], 24.0
     if not frames:
@@ -221,6 +225,10 @@ def run(input_path: str, out_dir: str, profile: str = "lite", passes=None,
                     "mp4_per_pass": bool(export_mp4 and is_video),
                     "multilayer_exr": exr_written},
     }
+    if is_video and (start_frame or end_frame):
+        manifest["frame_range"] = [start_frame,
+                                   end_frame if end_frame
+                                   else start_frame + len(frames)]
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
     return manifest

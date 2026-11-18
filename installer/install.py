@@ -24,6 +24,8 @@ Usage:
   python install.py --yes           # non-interactive, everything on
   python install.py --with-blender --no-ae-panel --no-models
   python install.py --dry-run       # print the plan, change nothing
+  python install.py --repair        # refresh an existing install: new
+                                    # app files + add-ons, venv and models kept
 
 Stdlib only. Detection paths can be overridden for testing with
 AMVFX_BLENDER_ADDONS_DIRS / AMVFX_AE_PANEL_DIRS / AMVFX_CEP_DIR
@@ -67,6 +69,13 @@ IGNORE = shutil.ignore_patterns(".git", ".venv", "__pycache__", "*.pyc",
 
 def log(msg):
     print(f"[AMVFX] {msg}", flush=True)
+
+
+def _looks_like_install(target):
+    """True when target already holds an AMVFX install (app payload)."""
+    return os.path.isdir(target) and (
+        os.path.isfile(os.path.join(target, "app.py")) or
+        os.path.isdir(os.path.join(target, "amvfx")))
 
 
 def default_target():
@@ -329,6 +338,14 @@ def _venv_python(target, windowed=False):
     return os.path.join(target, ".venv", sub, names[-1])
 
 
+def _ps_quote(s):
+    """Quote a string as a PowerShell single-quoted literal: wrap in
+    single quotes and double any embedded single quote (the PowerShell
+    escape). Paths with spaces already worked; a ' in a username or
+    folder name used to break the .lnk creation command."""
+    return "'" + str(s).replace("'", "''") + "'"
+
+
 def install_shortcut(target, dry):
     """Desktop shortcut that opens the app (via launch_amvfx.py)."""
     desktop = detect_desktop_dir()
@@ -341,10 +358,10 @@ def install_shortcut(target, dry):
             return
         os.makedirs(desktop, exist_ok=True)
         ps = ("$ws = New-Object -ComObject WScript.Shell; "
-              f"$s = $ws.CreateShortcut('{lnk}'); "
-              f"$s.TargetPath = '{py}'; "
-              f"$s.Arguments = '\"{launcher}\"'; "
-              f"$s.WorkingDirectory = '{target}'; "
+              f"$s = $ws.CreateShortcut({_ps_quote(lnk)}); "
+              f"$s.TargetPath = {_ps_quote(py)}; "
+              f"$s.Arguments = {_ps_quote('\"' + launcher + '\"')}; "
+              f"$s.WorkingDirectory = {_ps_quote(target)}; "
               "$s.Description = 'AMVFX - VFX Passes Generator'; $s.Save()")
         try:
             subprocess.run(["powershell", "-NoProfile", "-Command", ps],
@@ -393,7 +410,7 @@ def install_shortcut(target, dry):
 # --------------------------------------------------------------------------
 
 DEFAULTS = dict(app=True, models=True, full=False, blender=True,
-                ae_panel=True, cep=False, shortcut=True)
+                ae_panel=True, cep=False, shortcut=True, repair=False)
 
 
 def gui_choices():
@@ -422,6 +439,7 @@ def gui_choices():
         ("ae_panel", "After Effects panel (ScriptUI .jsx)", False),
         ("cep", "After Effects CEP extension (.zxp source, unsigned mode)", False),
         ("shortcut", "Desktop shortcut (double-click opens the app)", False),
+        ("repair", "Repair existing install (refresh files, keep venv + models)", False),
     ]
     for key, label, locked in boxes:
         v = tk.BooleanVar(value=DEFAULTS[key])
@@ -476,6 +494,20 @@ def do_install(state, dry=False, gui_log=None):
     if gui_log:
         log = gui_log
     target = state["target"]
+    repair = state.get("repair", False)
+    if repair:
+        if not _looks_like_install(target):
+            raise SystemExit(
+                f"AMVFX repair: no existing install found at {target}. "
+                "Run the installer without --repair for a fresh install.")
+        log(f"Repair mode: refreshing files in {target}; "
+            "keeping the venv and local models untouched.")
+        state["skip_venv"] = True
+        state["models"] = False
+    elif _looks_like_install(target):
+        log(f"Existing install detected at {target} - re-run with "
+            "--repair to refresh files without touching the venv or "
+            "local models.")
     install_app(target, dry)
     if not state.get("skip_venv"):
         install_venv(target, state.get("full", False), dry)
@@ -503,6 +535,9 @@ def main():
     ap.add_argument("--yes", action="store_true",
                     help="non-interactive: app + models + Blender + AE panel")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--repair", action="store_true",
+                    help="repair an existing install: refresh the app "
+                         "files and add-ons, keep the venv and models")
     ap.add_argument("--skip-venv", action="store_true",
                     help="copy files only; do not create the Python venv")
     for name in ("models", "full", "blender", "ae-panel", "cep", "shortcut"):
@@ -519,10 +554,11 @@ def main():
     if args.gui:
         gui_choices()
         return 0
-    if args.yes or flags or args.target or args.dry_run or args.skip_venv:
+    if args.yes or flags or args.target or args.dry_run or args.skip_venv or args.repair:
         state = dict(DEFAULTS)
         state["target"] = args.target or default_target()
         state["skip_venv"] = args.skip_venv
+        state["repair"] = args.repair
         state.update(flags)
         if args.yes:
             state.update(models=True, blender=True, ae_panel=True)

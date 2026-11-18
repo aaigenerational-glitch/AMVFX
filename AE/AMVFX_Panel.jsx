@@ -11,8 +11,10 @@
  *      image/video you pick - or on the clip currently SELECTED in the
  *      timeline ("Use Selected Clip"): a footage layer resolves to its
  *      file on disk, and a composition (precomp) is rendered to a temp
- *      movie through the render queue first. AE pauses while the
- *      passes generate.
+ *      movie through the render queue first. The layer's in/out points
+ *      are honoured: generation is trimmed to that range
+ *      (--start-frame/--end-frame) instead of the whole file.
+ *      AE pauses while the passes generate.
  *   2. Imports the generated passes (PNG sequences / MP4s / EXR sequence)
  *      and builds a comp with the source plate at the bottom and every
  *      pass stacked above it, named and ready for relight/comp work.
@@ -21,6 +23,11 @@
     var PASSES = ["source", "alpha", "depth", "normal", "basecolor",
                   "roughness", "metallic", "specular", "ao"];
     var isWin = ($.os.indexOf("Windows") !== -1);
+
+    // Quote a path for the shell command: strip embedded double quotes
+    // (a " in a folder name would break the cmd /c quoting) and wrap
+    // the rest in double quotes, so paths with spaces work.
+    function q(p) { return '"' + String(p).replace(/"/g, "") + '"'; }
 
     // Comp name for a built pass comp: "AMVFX_<source-stem>", e.g.
     // source "shot01.mp4" -> "AMVFX_shot01". (Was "AMVFX_" + the first
@@ -61,15 +68,26 @@
         var btnSrc = g2.add("button", undefined, "Browse...");
         btnSrc.onClick = function () {
             var f = File.openDialog("Pick an image or video");
-            if (f) srcPath.text = f.fsName;
+            if (f) {
+                srcPath.text = f.fsName;
+                selRange = {start: -1, end: -1};  // hand-picked file: whole file
+                status.text = "Source file picked (whole file).";
+            }
         };
+        // Frame range from the selected layer's in/out points; -1/-1
+        // means "whole file" (set by "Use Selected Clip" below).
+        var selRange = {start: -1, end: -1};
         var btnSel = pal.add("button", undefined,
             "Use Selected Clip (timeline selection)");
         btnSel.onClick = function () {
             var r = resolveSelectedClip();
             if (r.error) { alert(r.error); return; }
             srcPath.text = r.path;
-            status.text = "Source from timeline: " + r.label;
+            selRange = {start: r.startFrame, end: r.endFrame};
+            status.text = "Source from timeline: " + r.label +
+                (r.startFrame >= 0
+                    ? " (frames " + r.startFrame + "-" + (r.endFrame - 1) + ")"
+                    : " (whole file)");
         };
 
         var g3 = pal.add("group");
@@ -108,13 +126,17 @@
                 if (checks[PASSES[i]].value) chosen.push(PASSES[i]);
             var out = outFolder();
             var cmd;
-            var cd = 'cd /d "' + amvfxDir.text + '"';
-            var run = '"' + pyCmd.text + '" -m amvfx "' + srcPath.text +
-                      '" --out "' + out.fsName + '" --profile ' +
+            var cd = 'cd /d ' + q(amvfxDir.text);
+            var run = q(pyCmd.text) + ' -m amvfx ' + q(srcPath.text) +
+                      ' --out ' + q(out.fsName) + ' --profile ' +
                       profile.selection.text + ' --passes ' +
                       chosen.join(",");
+            // Trim to the selected layer's in/out points when set.
+            if (selRange.start >= 0)
+                run += " --start-frame " + selRange.start +
+                       " --end-frame " + selRange.end;
             if (isWin) cmd = 'cmd /c "' + cd + " && " + run + '"';
-            else cmd = 'cd "' + amvfxDir.text + '" && ' + run;
+            else cmd = 'cd ' + q(amvfxDir.text) + ' && ' + run;
             status.text = "Generating... (AE is paused)";
             pal.update();
             system.callSystem(cmd);
@@ -184,11 +206,33 @@
         return pal;
     }
 
+    // Frame range of a layer's in/out points, in source-frame indices
+    // (end exclusive). inPoint/outPoint are composition time in seconds;
+    // source time is (compTime - startTime) / stretch. Returns
+    // {start: -1, end: -1} for the whole file when the range is
+    // unmappable - still images, reversed layers (inPoint > outPoint),
+    // or a zero stretch.
+    function layerFrameRange(layer, comp) {
+        var fps = comp.frameRate || 30;
+        var stretch = (layer.stretch || 100) / 100;
+        if (!stretch) return {start: -1, end: -1};
+        function toFrame(sec) {
+            return Math.max(0, Math.round(sec * fps));
+        }
+        var start = toFrame((layer.inPoint - layer.startTime) / stretch);
+        var end = toFrame((layer.outPoint - layer.startTime) / stretch);
+        if (end <= start) return {start: -1, end: -1};
+        return {start: start, end: end};
+    }
+
     // Resolve the layer selected in the active comp's timeline to a
     // source file AMVFX can process. Footage -> its file on disk.
     // Composition -> rendered to a temp movie via the render queue
     // (the whole queue renders; H.264 template when available, else
     // Lossless). Anything else -> a plain-language error.
+    // Returns {path, label, startFrame, endFrame}; the frame range is
+    // the layer's in/out points mapped to source frames (-1/-1 = whole
+    // file).
     function resolveSelectedClip() {
         var comp = app.project.activeItem;
         if (!(comp instanceof CompItem))
@@ -199,11 +243,13 @@
             return {error: "No layer is selected in the active " +
                            "composition."};
         var layer = sel[0];
+        var range = layerFrameRange(layer, comp);
         var src = layer.source;
         if (src instanceof FootageItem) {
             if (src.file)
                 return {path: src.file.fsName,
-                        label: layer.name + " (" + src.name + ")"};
+                        label: layer.name + " (" + src.name + ")",
+                        startFrame: range.start, endFrame: range.end};
             return {error: "The selected layer's footage has no file " +
                            "on disk (generated or missing footage). " +
                            "Pick a file instead."};
@@ -228,7 +274,8 @@
                 if (tmp.exists)
                     return {path: tmp.fsName,
                             label: layer.name + " (rendered comp: " +
-                                   src.name + ")"};
+                                   src.name + ")",
+                            startFrame: range.start, endFrame: range.end};
                 return {error: "Rendering the selected composition " +
                                "did not produce a file."};
             } catch (e) {
