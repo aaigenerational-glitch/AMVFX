@@ -2,7 +2,9 @@
 
 Run:  AMVFX_JOB_DIR=<job> blender -b --factory-startup -P tests/test_blender_addon.py
 Requires an AMVFX job folder (lite profile is enough) and Blender 3.6-4.x.
-Verified passing on Blender 4.0.2 (2026-10-30).
+Verified passing on Blender 4.0.2 (2026-10-30); camera checks added
+2026-11-18, ground-plane checks added 2026-11-19 (not runnable on the
+dev VM, which has no Blender binary - syntax-checked only).
 """
 import os
 import sys
@@ -109,6 +111,35 @@ assert bgs[0].depth == "BACK", bgs[0].depth
 # camera sits on +Z looking at the plate, far enough to frame it
 import math
 assert cam.location.z > 1.0 / math.tan(cam.data.angle / 2.0), cam.location
+
+# ---- ground plane (v0.5.0) ---------------------------------------------
+res = bpy.ops.amvfx.add_ground_plane()
+assert "FINISHED" in res, res
+ground = bpy.data.objects.get("AMVFX_Ground")
+assert ground is not None and ground.type == "MESH", "no AMVFX_Ground object"
+# horizontal: face normal points up (+Y), i.e. -90 deg about X
+assert abs(ground.rotation_euler[0] + math.pi / 2.0) < 1e-6, \
+    ground.rotation_euler
+# sits at the plate's bottom edge (plate is 2 units tall, centred on origin)
+assert abs(ground.location.y + 1.0) < 1e-6, ground.location
+# extends from the plate toward the camera (+Z)
+assert ground.location.z > 0.0, ground.location
+# width matches the plate aspect; depth from the panel prop
+plate_obj = bpy.data.objects["AMVFX_Plate"]
+assert abs(ground.scale[0] - plate_obj.scale[0]) < 1e-6, \
+    (ground.scale, plate_obj.scale)
+assert abs(ground.scale[1] * 2.0 - props.ground_depth) < 1e-6, ground.scale
+assert ground.data.materials \
+    and ground.data.materials[0].name == "AMVFX_Ground"
+# re-running reuses the same object (no duplicates)
+res = bpy.ops.amvfx.add_ground_plane()
+assert "FINISHED" in res, res
+assert len([o for o in bpy.data.objects
+            if o.name == "AMVFX_Ground"]) == 1, \
+    [o.name for o in bpy.data.objects if "Ground" in o.name]
+print("GROUND:", ground.name, "| loc =",
+      tuple(round(v, 3) for v in ground.location), "| scale =",
+      tuple(round(v, 3) for v in ground.scale))
 
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.environ.get("TMPDIR", "/tmp"), "amvfx_blender_test.blend"))
 print("AMVFX BLENDER ADDON TEST: ALL PASS")

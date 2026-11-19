@@ -85,14 +85,23 @@ Each daily run aims for a **release bundle**, in this shape:
    (Partial 2026-11-18, v0.4.0: audit found all subprocess calls are
    already list-form; fixed the two real gaps - PowerShell single-quote
    escaping in the installer shortcut, quote-stripping in both JSX
-   generate commands - plus a unit test. Remaining: re-audit after
-   future subprocess additions; item stays open.)
+   generate commands - plus a unit test. Re-audit 2026-11-19, v0.5.0:
+   clean - every subprocess call is still list-form (ffmpeg encode,
+   NormalCrafter shell-out, launcher, installer pip/venv/Blender/
+   defaults/PowerShell), both JSX panels still use q() quoting, and
+   updater.py / blender/amvfx_loader.py make no subprocess calls at
+   all. Item DONE.)
 3. **Docs: quickstart GIF/screenshots** for the README and Pages site.
 4. **Tests: pipeline smoke test** - a 2-frame synthetic video through
-   the lite profile in CI-style local runs. (Partially covered
-   2026-11-18: the trim tests build a synthetic video and a real
-   12-frame lite run with --start-frame/--end-frame was verified by
-   hand; a permanent suite-level smoke test is still open.)
+   the lite profile in CI-style local runs. (DONE 2026-11-19, v0.5.0:
+   tests/test_smoke.py runs pipeline.run end-to-end on real cached
+   ONNX models and asserts the manifest, PNGs, per-pass MP4s and
+   sane pass values. Note: it needs ~3.3 GB free - BiRefNet 512 peaks
+   there - and was OOM-killed twice on a busy shared VM before
+   passing; single-threaded ORT via OMP_NUM_THREADS=1 in the test.
+   A dead end on the way: ORT_ENABLE_BASIC graph optimisation
+   measured no better than the default level on the 512 model, so
+   backends.py is unchanged.)
 
 ## Ideas pool (references the daily job may draw from)
 
@@ -112,10 +121,10 @@ Each daily run aims for a **release bundle**, in this shape:
 | Motion vectors pass | Optical-flow MVs for post motion blur | RAFT flow | Useful in Nuke/AE; niche audience |
 | Frame interpolation | Slow-motion / fps conversion of passes | RIFE | Must interpolate all passes consistently |
 | Face / body tracking | Landmarks + segmentation for characters | MediaPipe | Different audience (VTuber/mocap); scope risk |
-| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only. First stone SHIPPED 2026-11-18 (v0.4.0): camera-from-plate in the Blender add-on (background image + render res + framing). Next stones: ground plane, light-direction overlay |
+| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only. First stone SHIPPED 2026-11-18 (v0.4.0): camera-from-plate in the Blender add-on (background image + render res + framing). Second stone SHIPPED 2026-11-19 (v0.5.0): ground plane (AMVFX_Ground, plate-width, depth prop, dark rough material, "Scene Planning" panel box). Next stones: light-direction overlay, depth-layer stage |
 | 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first |
 | Lighting + motion-path planner | Overlays showing key-light direction, shadow side, and subject/camera motion paths over the plate or stage | Normal/depth passes; vector overlays | Planning aid for AMV editors; starts as research/overlays, not a renderer |
-| Depth-map 3D lighting guide | Show editors how to turn the depth pass into real 3D geometry (AE displacement / Blender displacement, both already in AMVFX) and throw a point light at it, so a flat clip can be relit in 3D | Existing depth pass + Blender add-on displacement | Research 2026-11-17: AMV tutorials already teach this exact move with generated depth maps ("3D Lighting with Depth Maps in After Effects", amvtutorial.com) and AE 2025+ native 3D camera/spotlight setups; a worked guide + preset fits the scene-planning track — docs-sized, not a new model |
+| Depth-map 3D lighting guide | Show editors how to turn the depth pass into real 3D geometry (AE displacement / Blender displacement, both already in AMVFX) and throw a point light at it, so a flat clip can be relit in 3D | Existing depth pass + Blender add-on displacement | Research 2026-11-17: AMV tutorials already teach this exact move with generated depth maps ("3D Lighting with Depth Maps in After Effects", amvtutorial.com) and AE 2025+ native 3D camera/spotlight setups; a worked guide + preset fits the scene-planning track — docs-sized, not a new model. DONE 2026-11-19 (v0.5.0): docs/depth-3d-lighting-guide.md (AE Displacement Map + 3D layer + Point light; Blender Z-Depth + light + ground plane; normal-pass light-direction tip). Sources re-verified 2026-11-19: amvtutorial listing + two Adobe helpx pages. |
 
 ### Vision / long-term reference (not a build item)
 
@@ -154,6 +163,34 @@ it fits the passes workflow - in that order.
 
 ## Done
 
+- **2026-11-19 (v0.5.0)** - **Tests: pipeline smoke test** (backlog #4
+  DONE): `tests/test_smoke.py` — a 2-frame synthetic video through
+  the lite profile end-to-end on the real cached ONNX models; asserts
+  the manifest (frames/profile/passes/provenance), PNGs for every
+  pass, per-pass MP4s when ffmpeg exists, and sane pass values
+  (alpha/depth means strictly inside 0..255). Single-threaded ORT
+  (`OMP_NUM_THREADS=1` in the test); measured peak ~3.3 GB (BiRefNet
+  512) and OOM-killed twice on the busy shared VM before passing.
+  **Blender add-on: ground plane** (camera-rig track, second stone):
+  new `amvfx.add_ground_plane` operator + "Scene Planning" panel box
+  (camera + ground plane + depth prop): an `AMVFX_Ground` plane at
+  the plate's bottom edge, plate-width, extending toward the camera,
+  dark fully-rough Principled material, reused on re-run; add-on
+  version (0, 4, 0); headless test extended in
+  `tests/test_blender_addon.py` — not runnable on the dev VM, which
+  has no Blender binary. **Bug-fix sweep (paths with spaces, DONE)**:
+  full re-audit found no gaps — all subprocess calls list-form, both
+  JSX panels use q() quoting. **Docs: depth-map 3D lighting guide**
+  (`docs/depth-3d-lighting-guide.md`): AE native route (Displacement
+  Map + 3D layer + Point light) and Blender route (Z-Depth + light +
+  ground plane), normal-pass light-direction tip. **UI: job summary
+  shows the output folder** (`app.format_job_note` + `tests/test_app.py`;
+  test_app sanitizes no_proxy first, same httpx trap as the app
+  import check). Research 2026-11-19: Blender
+  `primitive_plane_add` confirmed in official API docs; amvtutorial
+  depth-lighting article + two Adobe helpx pages re-verified;
+  low-quality search hits claiming Blender 5.1/5.2 were flagged
+  unverified and not used.
 - **2026-11-18 (v0.4.0)** - **Installer: repair mode** (`--repair`
   flag + GUI checkbox): refreshes app files and add-ons, keeps the
   existing venv (no recreate, no pip reinstall) and local models;

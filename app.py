@@ -27,6 +27,20 @@ except Exception:
 PROFILES = ["lite"] + (["gpu"] if GPU_AVAILABLE else [])
 
 
+def format_job_note(manifest, out_dir):
+    """One-line job summary for the UI: profile, frames, resolution, passes,
+    exports - and the output folder, so a user can find the files on disk
+    without digging through temp dirs."""
+    note = (f"Profile: {manifest['profile']} - {manifest['frames']} frame(s) "
+            f"at {manifest['resolution'][0]}x{manifest['resolution'][1]}. "
+            f"Passes: {', '.join(manifest['passes'])}. "
+            "ZIP contains PNG sequences"
+            + (", per-pass MP4s" if manifest["exports"]["mp4_per_pass"] else "")
+            + (" and multi-layer EXRs (Beeble-style layer names)."
+               if manifest["exports"]["multilayer_exr"] else "."))
+    return note + f" Output folder: {out_dir}"
+
+
 def process(file_obj, profile, passes, progress=gr.Progress()):
     if file_obj is None:
         raise gr.Error("Upload an image or video first.")
@@ -49,13 +63,7 @@ def process(file_obj, profile, passes, progress=gr.Progress()):
             for fn in files:
                 full = os.path.join(root, fn)
                 z.write(full, os.path.relpath(full, out_dir))
-    note = (f"Profile: {manifest['profile']} - {manifest['frames']} frame(s) "
-            f"at {manifest['resolution'][0]}x{manifest['resolution'][1]}. "
-            f"Passes: {', '.join(manifest['passes'])}. "
-            "ZIP contains PNG sequences"
-            + (", per-pass MP4s" if manifest["exports"]["mp4_per_pass"] else "")
-            + (" and multi-layer EXRs (Beeble-style layer names)."
-               if manifest["exports"]["multilayer_exr"] else "."))
+    note = format_job_note(manifest, out_dir)
     # Remember this job for the "Recent jobs" list (best-effort: a
     # history failure must never break a finished job).
     history.record_job(src, profile, manifest["passes"], out_dir,

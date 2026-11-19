@@ -37,16 +37,18 @@ from bpy.types import Operator, Panel, PropertyGroup
 bl_info = {
     "name": "AMVFX Blender Export",
     "author": "AMVFX",
-    "version": (0, 3, 0),
-    "blender": (3, 6, 0),
-    "location": "3D Viewport > Sidebar > AMVFX",
+    "version": (0, 4, 0),
+    "blender": (3, 6, 0),    "location": "3D Viewport > Sidebar > AMVFX",
     "description": "Build a relightable PBR plate (with optional Z-depth "
                    "displacement) from an AMVFX job folder, plus a camera "
-                   "matched to the plate for planning moves.",
+                   "matched to the plate and a ground plane for planning "
+                   "moves and light direction.",
     "category": "Material",
 }
 
 CAM_NAME = "AMVFX_Camera"
+GROUND_NAME = "AMVFX_Ground"
+GROUND_MAT_NAME = "AMVFX_Ground"
 GROUP_NAME = "AMVFX_PBR"
 MAT_NAME = "AMVFX_Plate"
 OBJ_NAME = "AMVFX_Plate"
@@ -212,6 +214,11 @@ class AMVFXProps(PropertyGroup):
         description="Subdivision applied to the plate so displacement has "
                     "geometry to push. Only used when Z-Depth is enabled",
         default=5, min=0, max=8, update=_on_prop_change)
+    ground_depth: FloatProperty(
+        name="Ground Plane Depth",
+        description="How far the ground plane extends from the plate "
+                    "toward the camera (Blender units)",
+        default=4.0, min=0.5, max=20.0)
 
 
 # --------------------------------------------------------------------------
@@ -508,6 +515,56 @@ def build_camera(context):
                  f"background = {img.name}, distance {dist:.2f}.")
 
 
+def build_ground_plane(context):
+    """Ground plane (roadmap camera-rig track, next stone after
+    camera-from-plate): a horizontal floor at the plate's bottom edge,
+    so editors can stand the shot on something and judge light
+    direction and contact shadows against the plate.
+
+    * creates (or reuses) an AMVFX_Ground object,
+    * width matches the plate (2 * aspect), depth from the panel prop,
+    * sits at y = -1 (the plate plane is 2 units tall, centred on the
+      origin) and extends from the plate toward the camera (+Z),
+    * gets a simple dark, fully rough Principled material.
+    """
+    import math
+
+    props = context.scene.amvfx
+    plate = bpy.data.objects.get(OBJ_NAME)
+    aspect = 16.0 / 9.0
+    if plate is not None and plate.scale[0]:
+        aspect = plate.scale[0]  # the plate's X scale is its aspect ratio
+    depth = max(0.5, props.ground_depth)
+
+    obj = bpy.data.objects.get(GROUND_NAME)
+    if obj is None:
+        bpy.ops.mesh.primitive_plane_add(size=2.0,
+                                         location=(0.0, -1.0, depth / 2.0))
+        obj = context.active_object
+        obj.name = GROUND_NAME
+    # -90 deg about X: the face normal points up (+Y) and the plane's
+    # local Y extent runs along world Z, toward the camera.
+    obj.rotation_euler = (-math.pi / 2.0, 0.0, 0.0)
+    obj.location = (0.0, -1.0, depth / 2.0)
+    obj.scale = (aspect, depth / 2.0, 1.0)
+
+    mat = bpy.data.materials.get(GROUND_MAT_NAME) or \
+        bpy.data.materials.new(GROUND_MAT_NAME)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf is not None:
+        bsdf.inputs["Base Color"].default_value = (0.05, 0.05, 0.05, 1.0)
+        rough = bsdf.inputs.get("Roughness")
+        if rough is not None:
+            rough.default_value = 1.0
+    if not obj.data.materials:
+        obj.data.materials.append(mat)
+    else:
+        obj.data.materials[0] = mat
+    return (obj, f"Ground plane: {2.0 * aspect:.2f} wide, {depth:.1f} "
+                 f"deep, at the plate's bottom edge.")
+
+
 # --------------------------------------------------------------------------
 # operators + panel
 # --------------------------------------------------------------------------
@@ -533,6 +590,20 @@ class AMVFX_OT_camera(Operator):
 
     def execute(self, context):
         result, msg = build_camera(context)
+        if result is None:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class AMVFX_OT_ground_plane(Operator):
+    bl_idname = "amvfx.add_ground_plane"
+    bl_label = "Add Ground Plane"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        result, msg = build_ground_plane(context)
         if result is None:
             self.report({"ERROR"}, msg)
             return {"CANCELLED"}
@@ -580,7 +651,11 @@ class AMVFX_PT_panel(Panel):
         layout.prop(props, "job_dir")
         layout.prop(props, "prefer_mp4")
         layout.operator("amvfx.build_plate", icon="MATERIAL")
-        layout.operator("amvfx.add_camera", icon="CAMERA_DATA")
+        plan_box = layout.box()
+        plan_box.label(text="Scene Planning", icon="CAMERA_DATA")
+        plan_box.operator("amvfx.add_camera", icon="CAMERA_DATA")
+        plan_box.operator("amvfx.add_ground_plane", icon="MESH_PLANE")
+        plan_box.prop(props, "ground_depth")
         box = layout.box()
         box.label(text="Z-Depth Displacement", icon="MOD_DISPLACE")
         box.prop(props, "z_depth_enabled")
@@ -596,7 +671,7 @@ class AMVFX_PT_panel(Panel):
 
 
 classes = (AMVFXProps, AMVFX_OT_build, AMVFX_OT_camera,
-           AMVFX_OT_compositor, AMVFX_PT_panel)
+           AMVFX_OT_ground_plane, AMVFX_OT_compositor, AMVFX_PT_panel)
 
 
 def register():
