@@ -190,7 +190,11 @@ it fits the passes workflow - in that order.
   6.20+ feature, installed 6.31.0; `tests/test_app.py`). **Docs:
   quickstart GIF/screenshots** (backlog #3 DONE): real lite run on
   `examples/test_portrait.jpg` → labelled animated GIF + contact sheet
-  in `docs/images/`, README quickstart section. Research 2026-11-20:
+  in `docs/images/`, README quickstart section. NOTE: the two
+  quickstart images are binary, and the snapshot push flow is UTF-8
+  text only, so they are in the local commit but NOT on GitHub yet —
+  the README image links 404 there until the files are uploaded via
+  the GitHub web UI (or a binary-capable push). Research 2026-11-20:
   Blender 5.0 released 18 Nov 2025 (5.2 LTS 14 Jul 2026; adaptive
   subdivision no longer experimental — relevant to our Subdiv levels);
   Gradio 6.32.0 latest; 2.5D parallax workflow cross-checked across
