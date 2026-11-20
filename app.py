@@ -41,14 +41,18 @@ def format_job_note(manifest, out_dir):
     return note + f" Output folder: {out_dir}"
 
 
-def process(file_obj, profile, passes, progress=gr.Progress()):
+def process(file_obj, profile, passes, alpha_source, key_color,
+            progress=gr.Progress()):
     if file_obj is None:
         raise gr.Error("Upload an image or video first.")
     src = file_obj if isinstance(file_obj, str) else file_obj.name
     workdir = tempfile.mkdtemp(prefix="amvfx_")
     out_dir = os.path.join(workdir, "out")
     chosen = passes or LITE_PASSES
+    alpha_backend = ("chroma" if alpha_source.startswith("Chroma key")
+                     else "birefnet")
     manifest = run(src, out_dir, profile=profile, passes=chosen,
+                   alpha_backend=alpha_backend, key_color=key_color,
                    max_frames=48, max_width=1024,
                    progress=lambda m: progress(0.1, desc=m))
     # previews: first frame of each pass
@@ -85,11 +89,20 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
         "(SwitchLight), built from Depth Anything V2, BiRefNet and Marigold.\n\n"
         "**lite** profile runs on CPU (depth, alpha, depth-derived normal, AO). "
         "**gpu** profile adds Marigold albedo / roughness / metallic / model "
-        "normals and the derived specular F0 pass.")
+        "normals and the derived specular F0 pass.\n\n"
+        "Alpha source: **BiRefNet** AI matte by default, or **Chroma key** for "
+        "footage shot on a green/blue screen — classic RGB-distance keying, "
+        "no model, with despill on the edges.")
     with gr.Row():
         inp = gr.File(label="Image or video", file_types=["image", "video"])
         with gr.Column():
             profile = gr.Radio(PROFILES, value="lite", label="Profile")
+            alpha_source = gr.Radio(
+                ["BiRefNet (AI matte)", "Chroma key (green/blue screen)"],
+                value="BiRefNet (AI matte)", label="Alpha source")
+            key_color = gr.Dropdown(
+                ["green", "blue"], value="green",
+                label="Key colour (chroma key only)")
             passes = gr.CheckboxGroup(
                 choices=["source", "alpha", "depth", "normal", "basecolor",
                          "roughness", "metallic", "specular", "ao"],
@@ -98,7 +111,8 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
             btn = gr.Button("Generate passes", variant="primary")
     gallery = gr.Gallery(
         label="Pass previews (frame 1) — click a thumbnail to zoom",
-        columns=4, allow_preview=True)
+        columns=4, allow_preview=True,
+        buttons=["download", "download_all"])
     # Persistent full-size viewer: clicking a thumbnail above swaps
     # this to that pass at full resolution (the gallery's own lightbox
     # is transient). The full ZIP download is below; the gallery
@@ -134,7 +148,7 @@ with gr.Blocks(title="AMVFX - Open-Source VFX Passes") as demo:
         refresh_btn.click(_refresh_history, None, history_md)
         clear_btn.click(_clear_history, None, history_md)
 
-    btn.click(process, [inp, profile, passes],
+    btn.click(process, [inp, profile, passes, alpha_source, key_color],
               [gallery, zoom, zoom_name, zip_out, note_out, history_md])
 
     # ---------------- Updates: check + install in place ----------------

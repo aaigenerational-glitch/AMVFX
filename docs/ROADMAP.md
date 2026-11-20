@@ -92,6 +92,13 @@ Each daily run aims for a **release bundle**, in this shape:
    updater.py / blender/amvfx_loader.py make no subprocess calls at
    all. Item DONE.)
 3. **Docs: quickstart GIF/screenshots** for the README and Pages site.
+   (DONE 2026-11-20, v0.6.0: a real lite run on
+   `examples/test_portrait.jpg` — 5 passes at 640x640 — produced a
+   labelled animated GIF cycling source/alpha/depth/normal/AO plus a
+   contact-sheet PNG, both in `docs/images/`, and a "Quick start" visual
+   section in the README with a chroma-key CLI example. The example
+   image is a concert shot, not a portrait — the passes still read
+   cleanly, so it stays.)
 4. **Tests: pipeline smoke test** - a 2-frame synthetic video through
    the lite profile in CI-style local runs. (DONE 2026-11-19, v0.5.0:
    tests/test_smoke.py runs pipeline.run end-to-end on real cached
@@ -110,7 +117,7 @@ Each daily run aims for a **release bundle**, in this shape:
 | Rotobrush-style propagation | Paint a mask on one frame, propagate it through the shot | SAM 2 / SAM 3 video segmentation | License VERIFIED 2026-11-18: SAM 2.1 code + checkpoints are Apache-2.0 (Meta paper, PyPI LICENSE) — license-clear. SAM 3 is a separate gated Meta licence — do NOT use. GPU-heavy; needs an interactive UI, not just a pass |
 | Video matte refinement | Cleaner, temporally stable alpha for hair/edges | MatAnyone 2 | License VERIFIED 2026-11-18: NTU S-Lab License 1.0 — non-commercial free, commercial use needs author permission (Beeble licenses it directly). NOT a default/commercial-safe backend; research-only, opt-in non-commercial experiment at most |
 | Per-object passes | Cryptomatte-style object ID pass + per-object normals | SAM 2 masks + existing passes | Offered 2026-10-30 as a separate build |
-| Chroma keyer | Green/blue-screen keying pass as an alpha alternative | Classic keying math (no model) | Cheap to build; quality bar vs BiRefNet unclear |
+| Chroma keyer | Green/blue-screen keying pass as an alpha alternative | Classic keying math (no model) | DONE 2026-11-20 (v0.6.0): `amvfx/keying.py` — RGB-distance key + smoothstep feather ramp + despill (G' = min(G, max(R,B)), weighted by 1-alpha so opaque pixels keep their colour), wired as `--alpha-backend chroma` (+ `--key-color/--key-similarity/--key-smoothness`), Gradio alpha-source radio, `tests/test_keying.py`; verified end-to-end on a synthetic green-screen frame (bg alpha 0, subject 255). Method cross-checked 2026-11-20 against two independent write-ups (nrtechstudio, vectree) — they agree on the distance, ramp and despill formulas |
 | Object removal / inpainting | Erase a masked object across frames | ProPainter, LaMa | GPU-heavy; big quality variance |
 | Upscaling | 2x/4x pass upscaling for delivery | Real-ESRGAN, SeedVR2 | License + VRAM check needed |
 | Sharpening | Detail enhancement pass/tool for soft plates | OpenCV unsharp / Real-ESRGAN-lite | Pairs with upscaling; keep it a tool, not a default |
@@ -121,8 +128,8 @@ Each daily run aims for a **release bundle**, in this shape:
 | Motion vectors pass | Optical-flow MVs for post motion blur | RAFT flow | Useful in Nuke/AE; niche audience |
 | Frame interpolation | Slow-motion / fps conversion of passes | RIFE | Must interpolate all passes consistently |
 | Face / body tracking | Landmarks + segmentation for characters | MediaPipe | Different audience (VTuber/mocap); scope risk |
-| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only. First stone SHIPPED 2026-11-18 (v0.4.0): camera-from-plate in the Blender add-on (background image + render res + framing). Second stone SHIPPED 2026-11-19 (v0.5.0): ground plane (AMVFX_Ground, plate-width, depth prop, dark rough material, "Scene Planning" panel box). Next stones: light-direction overlay, depth-layer stage |
-| 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first |
+| Camera rig + scene blocking | A camera matched to the plate (aspect, focal feel, horizon, ground plane) with position/rotation controls, so editors can plan moves against the shot | Depth + plate metadata; Blender camera tools | Stepping stone toward the diorama vision below; bounded pieces only. First stone SHIPPED 2026-11-18 (v0.4.0): camera-from-plate in the Blender add-on (background image + render res + framing). Second stone SHIPPED 2026-11-19 (v0.5.0): ground plane (AMVFX_Ground, plate-width, depth prop, dark rough material, "Scene Planning" panel box). Third stone SHIPPED 2026-11-20 (v0.6.0): depth-layer stage (AMVFX_Layer_00..N, source masked per depth band with soft Map Range ramps, Z-spaced, distance-ratio rescale to hold framing). Next stone: light-direction overlay |
+| 3D diorama / parallax stage | Plate split into depth layers on a mini 3D stage to preview camera moves, parallax and light direction before committing | Existing depth/alpha passes; Blender planes or an in-app 3D preview | Part of the conceptual camera/diorama track (2026-11-16); research + small prototypes first. First stone SHIPPED 2026-11-20 (v0.6.0): Blender depth-layer stage (see camera-rig row). Research 2026-11-20 (mouzeclick, olaf-motion, actionvfx — agree): the standard 2.5D workflow is 3–5 layers spaced on Z, pushed layers rescaled by the distance ratio (twice as far = 200%), camera animated, layers still; depth-map + Displacement Map is the faster alternative but stretches edges when pushed |
 | Lighting + motion-path planner | Overlays showing key-light direction, shadow side, and subject/camera motion paths over the plate or stage | Normal/depth passes; vector overlays | Planning aid for AMV editors; starts as research/overlays, not a renderer |
 | Depth-map 3D lighting guide | Show editors how to turn the depth pass into real 3D geometry (AE displacement / Blender displacement, both already in AMVFX) and throw a point light at it, so a flat clip can be relit in 3D | Existing depth pass + Blender add-on displacement | Research 2026-11-17: AMV tutorials already teach this exact move with generated depth maps ("3D Lighting with Depth Maps in After Effects", amvtutorial.com) and AE 2025+ native 3D camera/spotlight setups; a worked guide + preset fits the scene-planning track — docs-sized, not a new model. DONE 2026-11-19 (v0.5.0): docs/depth-3d-lighting-guide.md (AE Displacement Map + 3D layer + Point light; Blender Z-Depth + light + ground plane; normal-pass light-direction tip). Sources re-verified 2026-11-19: amvtutorial listing + two Adobe helpx pages. |
 
@@ -163,6 +170,31 @@ it fits the passes workflow - in that order.
 
 ## Done
 
+- **2026-11-20 (v0.6.0)** - **Chroma keyer** (ideas pool, anchor):
+  `amvfx/keying.py` — classic green/blue-screen alpha without a model
+  (normalised RGB distance to the key colour, smoothstep feather ramp,
+  despill clamped to the larger other channel, weighted by 1-alpha);
+  `--alpha-backend chroma` + `--key-color/--key-similarity/--key-smoothness`
+  in the CLI and pipeline, alpha-source radio + key-colour dropdown in
+  the Gradio app, provenance + `alpha_backend` in the manifest,
+  `tests/test_keying.py` (6 tests), verified end-to-end on a synthetic
+  green-screen frame. **Blender add-on: depth-layer stage** (camera-rig
+  track, third stone): new `amvfx.add_depth_layers` operator + "Scene
+  Planning" panel button and props (`depth_layers` 2–6, `depth_spread`):
+  the plate split into depth bands on separate planes, each masked by
+  soft Map Range ramps on the depth pass, Z-spaced, rescaled by the
+  distance ratio to hold the plate framing; add-on version (0, 5, 0);
+  headless test extended in `tests/test_blender_addon.py` — not runnable
+  on the dev VM, which has no Blender binary. **UI: gallery Download All**
+  (`buttons=["download", "download_all"]` on the pass gallery — Gradio
+  6.20+ feature, installed 6.31.0; `tests/test_app.py`). **Docs:
+  quickstart GIF/screenshots** (backlog #3 DONE): real lite run on
+  `examples/test_portrait.jpg` → labelled animated GIF + contact sheet
+  in `docs/images/`, README quickstart section. Research 2026-11-20:
+  Blender 5.0 released 18 Nov 2025 (5.2 LTS 14 Jul 2026; adaptive
+  subdivision no longer experimental — relevant to our Subdiv levels);
+  Gradio 6.32.0 latest; 2.5D parallax workflow cross-checked across
+  three tutorials; chroma-key math cross-checked across two write-ups.
 - **2026-11-19 (v0.5.0)** - **Tests: pipeline smoke test** (backlog #4
   DONE): `tests/test_smoke.py` — a 2-frame synthetic video through
   the lite profile end-to-end on the real cached ONNX models; asserts

@@ -20,6 +20,18 @@ def main(argv=None):
                     help="comma list from: " + ",".join(ALL_PASSES))
     ap.add_argument("--alpha-quality", action="store_true",
                     help="use full BiRefNet instead of BiRefNet-lite for alpha")
+    ap.add_argument("--alpha-backend", choices=["birefnet", "chroma"],
+                    default="birefnet",
+                    help="birefnet = AI matte (default); chroma = classic "
+                         "green/blue-screen key, no model")
+    ap.add_argument("--key-color", choices=["green", "blue"], default="green",
+                    help="screen colour for --alpha-backend chroma")
+    ap.add_argument("--key-similarity", type=float, default=0.25,
+                    help="chroma key: normalised distance below which a "
+                         "pixel is fully transparent (0-1)")
+    ap.add_argument("--key-smoothness", type=float, default=0.15,
+                    help="chroma key: width of the feathered ramp above "
+                         "similarity (0-1)")
     ap.add_argument("--normal-format", choices=["opengl", "directx"],
                     default="opengl",
                     help="normal map green-channel convention (Beeble exports OpenGL)")
@@ -45,6 +57,10 @@ def main(argv=None):
                    marigold_steps=args.marigold_steps,
                    normal_format=args.normal_format,
                    normal_backend=args.normal_backend,
+                   alpha_backend=args.alpha_backend,
+                   key_color=args.key_color,
+                   key_similarity=args.key_similarity,
+                   key_smoothness=args.key_smoothness,
                    max_frames=args.max_frames, max_width=args.max_width,
                    start_frame=args.start_frame, end_frame=args.end_frame,
                    export_mp4=not args.no_mp4, export_exr=not args.no_exr,

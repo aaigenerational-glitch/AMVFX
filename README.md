@@ -88,10 +88,23 @@ pip install -r requirements-lite.txt        # CPU
 python -m amvfx footage.mp4 -o out/ --profile lite
 python -m amvfx still.jpg  -o out/ --profile gpu \
     --passes source,alpha,depth,normal,basecolor,roughness,metallic,specular
+# green/blue-screen footage: classic chroma key instead of the AI matte
+python -m amvfx greenscreen.mp4 -o out/ --alpha-backend chroma --key-color green
 ```
 
 Every job writes `out/manifest.json` recording which model — or which
 deterministic derivation — produced each pass, so results are auditable.
+
+What a lite job produces — one real run on `examples/test_portrait.jpg`
+(a concert shot), cycled as an animation and as a contact sheet:
+
+![AMVFX lite passes: source, alpha, depth, normal, AO](docs/images/quickstart-passes.gif)
+
+![Contact sheet of the same five passes](docs/images/quickstart-passes.png)
+
+Alpha isolates the crowd from the stage, depth puts the crowd near and
+the stage far, and the normal + AO passes are derived from that depth —
+the same five passes the Blender add-on and the AE panels consume.
 
 ## Web app
 
@@ -116,7 +129,10 @@ group wires every pass into the right Principled sockets — Base Color
 (×AO), Roughness, Metallic, Specular, Normal via a Normal Map node,
 Alpha, and Depth into a Displacement node — with an optional
 **Z-Displacement (Z-Depth)** checkbox plus matching Strength/Midlevel
-controls on the group node itself. See
+controls on the group node itself. The **Scene Planning** box in the
+same panel adds a camera matched to the plate, a ground plane at the
+plate's bottom edge, and a **depth-layer stage** that splits the plate
+into depth bands on separate planes for 2.5D parallax previews. See
 [Blender Export/README.md](Blender%20Export/README.md). The original
 one-shot script remains at `blender/amvfx_loader.py`.
 
@@ -131,7 +147,9 @@ and NVIDIA's open Cosmos DiffusionRenderer.
 ## Tests
 
 ```bash
-python tests/test_geometry.py   # geometry, derivations, EXR round-trip
+python -m pytest tests/          # full suite (geometry, updater, installer,
+                                 # history, preview, trim, keying, app, smoke)
+python tests/test_geometry.py    # one file, standalone
 ```
 
 ## License

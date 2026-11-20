@@ -36,8 +36,15 @@ def _smooth_alpha(alphas, weight_prev: float = 0.35):
 
 def generate(frames, profile: str = "lite", passes=None,
             alpha_quality: bool = False, marigold_steps: int = 4,
-            normal_format: str = "opengl", progress=None):
+            normal_format: str = "opengl", progress=None,
+            alpha_backend: str = "birefnet", key_color: str = "green",
+            key_similarity: float = 0.25, key_smoothness: float = 0.15):
     """Generate passes for a list of RGB float frames.
+
+    alpha_backend: "birefnet" (AI matte, default) or "chroma" (classic
+        green/blue-screen key from amvfx.keying — no model; the source
+        pass of a chroma job is the despilled frame, noted in provenance).
+    key_color / key_similarity / key_smoothness only apply to "chroma".
 
     Returns (per_frame_passes, provenance) where per_frame_passes is a list
     of dicts pass_name -> float array.
@@ -61,15 +68,39 @@ def generate(frames, profile: str = "lite", passes=None,
         del depth_model
 
     alphas = None
+    despilled = None
     if "alpha" in passes:
-        say("Alpha: BiRefNet (ONNX)")
-        alpha_model = BiRefNetOnnx(quality=alpha_quality)
-        alphas = [alpha_model.alpha(f) for f in frames]
-        if n > 1:
-            alphas = _smooth_alpha(alphas)
-        provenance["alpha"] = ("model: ZhengPeng7/BiRefNet (MIT)"
-                               + (", light temporal smoothing" if n > 1 else ""))
-        del alpha_model
+        if alpha_backend == "chroma":
+            from . import keying
+            say(f"Alpha: chroma key ({key_color} screen, classic "
+                "RGB-distance key — no model)")
+            keyed = [keying.chroma_key(f, key=key_color,
+                                       similarity=key_similarity,
+                                       smoothness=key_smoothness)
+                     for f in frames]
+            alphas = [a for a, _ in keyed]
+            despilled = [d for _, d in keyed]
+            if n > 1:
+                alphas = _smooth_alpha(alphas)
+            provenance["alpha"] = (
+                f"chroma key (classic RGB-distance key, no model): "
+                f"key={key_color}, similarity={key_similarity}, "
+                f"smoothness={key_smoothness}"
+                + (", light temporal smoothing" if n > 1 else ""))
+            provenance["source"] = ("input frame, despilled "
+                                    "(chroma key spill removal)")
+        elif alpha_backend == "birefnet":
+            say("Alpha: BiRefNet (ONNX)")
+            alpha_model = BiRefNetOnnx(quality=alpha_quality)
+            alphas = [alpha_model.alpha(f) for f in frames]
+            if n > 1:
+                alphas = _smooth_alpha(alphas)
+            provenance["alpha"] = ("model: ZhengPeng7/BiRefNet (MIT)"
+                                   + (", light temporal smoothing" if n > 1 else ""))
+            del alpha_model
+        else:
+            raise ValueError(f"unknown alpha backend: {alpha_backend!r} "
+                             "(use 'birefnet' or 'chroma')")
 
     marigold = None
     intrinsics = normals_model = None
@@ -100,7 +131,9 @@ def generate(frames, profile: str = "lite", passes=None,
     for i, frame in enumerate(frames):
         d = {}
         if "source" in passes:
-            d["source"] = frame
+            # A chroma job's source is the despilled frame (spill removed
+            # from the edges); otherwise it is the input frame untouched.
+            d["source"] = despilled[i] if despilled is not None else frame
         if alphas is not None:
             d["alpha"] = alphas[i]
         depth_n = None
@@ -132,13 +165,15 @@ def generate(frames, profile: str = "lite", passes=None,
             d["ao"] = geometry.ao_from_depth(depth_n)
             provenance["ao"] = "derived: local depth-occlusion approximation"
         results.append(d)
-    provenance["source"] = "input frame"
+    provenance.setdefault("source", "input frame")
     return results, provenance
 
 
 def run(input_path: str, out_dir: str, profile: str = "lite", passes=None,
         alpha_quality: bool = False, marigold_steps: int = 4,
         normal_format: str = "opengl", normal_backend: str = "auto",
+        alpha_backend: str = "birefnet", key_color: str = "green",
+        key_similarity: float = 0.25, key_smoothness: float = 0.15,
         max_frames: int = 0, max_width: int = 0,
         start_frame: int = 0, end_frame: int = 0,
         export_png: bool = True, export_mp4: bool = True,
@@ -162,6 +197,10 @@ def run(input_path: str, out_dir: str, profile: str = "lite", passes=None,
                                      alpha_quality=alpha_quality,
                                      marigold_steps=marigold_steps,
                                      normal_format=normal_format,
+                                     alpha_backend=alpha_backend,
+                                     key_color=key_color,
+                                     key_similarity=key_similarity,
+                                     key_smoothness=key_smoothness,
                                      progress=progress)
     # Optional: replace normals with NormalCrafter's temporally consistent
     # video normals (GPU machines only; upstream repo clone required).
@@ -217,6 +256,7 @@ def run(input_path: str, out_dir: str, profile: str = "lite", passes=None,
         "fps": fps,
         "resolution": [int(frames[0].shape[1]), int(frames[0].shape[0])],
         "profile": profile,
+        "alpha_backend": alpha_backend,
         "normal_format": normal_format,
         "normal_space": "object (plate frame; see amvfx/geometry.py note)",
         "passes": produced,

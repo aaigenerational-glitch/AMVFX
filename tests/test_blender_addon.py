@@ -3,8 +3,9 @@
 Run:  AMVFX_JOB_DIR=<job> blender -b --factory-startup -P tests/test_blender_addon.py
 Requires an AMVFX job folder (lite profile is enough) and Blender 3.6-4.x.
 Verified passing on Blender 4.0.2 (2026-10-30); camera checks added
-2026-11-18, ground-plane checks added 2026-11-19 (not runnable on the
-dev VM, which has no Blender binary - syntax-checked only).
+2026-11-18, ground-plane checks added 2026-11-19, depth-layer checks
+added 2026-11-20 (not runnable on the dev VM, which has no Blender
+binary - syntax-checked only).
 """
 import os
 import sys
@@ -140,6 +141,46 @@ assert len([o for o in bpy.data.objects
 print("GROUND:", ground.name, "| loc =",
       tuple(round(v, 3) for v in ground.location), "| scale =",
       tuple(round(v, 3) for v in ground.scale))
+
+# ---- depth-layer stage (v0.6.0) ----------------------------------------
+res = bpy.ops.amvfx.add_depth_layers()
+assert "FINISHED" in res, res
+layers = sorted((o for o in bpy.data.objects
+                 if o.name.startswith("AMVFX_Layer_")),
+                key=lambda o: o.name)
+assert len(layers) == props.depth_layers, \
+    [o.name for o in bpy.data.objects if "Layer" in o.name]
+assert all(o.type == "MESH" for o in layers)
+# layer 00 is the nearest band: z decreases with the index, and the
+# framing rescale shrinks near layers and grows far ones
+zs = [o.location.z for o in layers]
+assert all(zs[i] > zs[i + 1] for i in range(len(zs) - 1)), zs
+scales = [o.scale[0] for o in layers]
+assert scales[0] < plate_obj.scale[0] < scales[-1], \
+    (scales, plate_obj.scale)
+# each layer material: source + depth textures, band mask into Alpha
+for o in layers:
+    mat = o.data.materials[0]
+    assert mat.name.startswith("AMVFX_LayerMat"), mat.name
+    nt = mat.node_tree
+    tex = {n.name: n for n in nt.nodes if n.type == "TEX_IMAGE"}
+    assert len(tex) == 2, [n.name for n in nt.nodes]
+    assert any(n.type == "MATH" and n.operation == "MULTIPLY"
+               for n in nt.nodes), "no band-mask multiply node"
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    assert any(l.from_node.type == "MATH"
+               and l.to_node == bsdf and l.to_socket.name == "Alpha"
+               for l in nt.links), "band mask not linked to Alpha"
+    assert any(l.from_node.type == "TEX_IMAGE"
+               and l.to_node == bsdf and l.to_socket.name == "Base Color"
+               for l in nt.links), "source not linked to Base Color"
+# re-running reuses the stage (no duplicates)
+res = bpy.ops.amvfx.add_depth_layers()
+assert "FINISHED" in res, res
+assert len([o for o in bpy.data.objects
+            if o.name.startswith("AMVFX_Layer_")]) == props.depth_layers
+print("LAYERS:", [(o.name, round(o.location.z, 3),
+                   round(o.scale[0], 3)) for o in layers])
 
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.environ.get("TMPDIR", "/tmp"), "amvfx_blender_test.blend"))
 print("AMVFX BLENDER ADDON TEST: ALL PASS")

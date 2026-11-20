@@ -21,6 +21,12 @@ Builds a relightable plate from an AMVFX job folder (the output of
   and the "Z-Depth Enable / Strength / Midlevel" inputs on the AMVFX_PBR
   group node itself, inside the same shader node space as the passes.
 
+* Scene planning (camera-from-plate, ground plane, depth-layer stage):
+  the add-on can also build a camera matched to the plate, a ground
+  plane at the plate's bottom edge, and a 2.5D parallax stage — the
+  plate split into depth bands on separate planes spaced along Z, so
+  editors can preview camera moves against the shot before committing.
+
 Install: Edit > Preferences > Add-ons > Install... -> AMVFX_Blender_Export.zip
 (or drop the amvfx_blender_export folder into your addons directory).
 Then look for the "AMVFX" tab in the 3D Viewport sidebar (N).
@@ -37,18 +43,20 @@ from bpy.types import Operator, Panel, PropertyGroup
 bl_info = {
     "name": "AMVFX Blender Export",
     "author": "AMVFX",
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (3, 6, 0),    "location": "3D Viewport > Sidebar > AMVFX",
     "description": "Build a relightable PBR plate (with optional Z-depth "
                    "displacement) from an AMVFX job folder, plus a camera "
-                   "matched to the plate and a ground plane for planning "
-                   "moves and light direction.",
+                   "matched to the plate, a ground plane and a depth-layer "
+                   "parallax stage for planning moves and light direction.",
     "category": "Material",
 }
 
 CAM_NAME = "AMVFX_Camera"
 GROUND_NAME = "AMVFX_Ground"
 GROUND_MAT_NAME = "AMVFX_Ground"
+LAYER_PREFIX = "AMVFX_Layer"
+LAYER_MAT_PREFIX = "AMVFX_LayerMat"
 GROUP_NAME = "AMVFX_PBR"
 MAT_NAME = "AMVFX_Plate"
 OBJ_NAME = "AMVFX_Plate"
@@ -219,6 +227,16 @@ class AMVFXProps(PropertyGroup):
         description="How far the ground plane extends from the plate "
                     "toward the camera (Blender units)",
         default=4.0, min=0.5, max=20.0)
+    depth_layers: IntProperty(
+        name="Depth Layers",
+        description="How many depth bands the parallax stage splits the "
+                    "plate into (2-6)",
+        default=4, min=2, max=6)
+    depth_spread: FloatProperty(
+        name="Depth Spread",
+        description="Total Z distance between the nearest and farthest "
+                    "stage layers (Blender units)",
+        default=1.5, min=0.2, max=5.0)
 
 
 # --------------------------------------------------------------------------
@@ -565,6 +583,178 @@ def build_ground_plane(context):
                  f"deep, at the plate's bottom edge.")
 
 
+def _layer_band_mask(nt, depth_node, lo, hi, feather):
+    """Alpha mask for one depth band, as shader nodes.
+
+    Ramps up from lo to lo+feather and back down from hi-feather to hi
+    (two clamped Map Range nodes multiplied), so neighbouring layers
+    overlap softly instead of cutting a hard line through the subject.
+    Returns the Math (MULTIPLY) node whose Value output is the mask.
+    """
+    nodes, links = nt.nodes, nt.links
+    up = nodes.new("ShaderNodeMapRange")
+    up.label = "Band ramp up"
+    up.clamp = True
+    up.inputs["Value"].default_value = 0.0
+    up.inputs["From Min"].default_value = lo
+    up.inputs["From Max"].default_value = lo + feather
+    up.inputs["To Min"].default_value = 0.0
+    up.inputs["To Max"].default_value = 1.0
+    links.new(depth_node.outputs["Color"], up.inputs["Value"])
+    down = nodes.new("ShaderNodeMapRange")
+    down.label = "Band ramp down"
+    down.clamp = True
+    down.inputs["Value"].default_value = 0.0
+    down.inputs["From Min"].default_value = hi - feather
+    down.inputs["From Max"].default_value = hi
+    down.inputs["To Min"].default_value = 1.0
+    down.inputs["To Max"].default_value = 0.0
+    links.new(depth_node.outputs["Color"], down.inputs["Value"])
+    mult = nodes.new("ShaderNodeMath")
+    mult.operation = "MULTIPLY"
+    mult.label = "Band mask"
+    links.new(up.outputs["Result"], mult.inputs[0])
+    links.new(down.outputs["Result"], mult.inputs[1])
+    return mult
+
+
+def _clear_layers():
+    """Remove earlier AMVFX_Layer_* objects and materials (re-run reuse)."""
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith(LAYER_PREFIX):
+            bpy.data.objects.remove(obj, do_unlink=True)
+    for mat in list(bpy.data.materials):
+        if mat.name.startswith(LAYER_MAT_PREFIX):
+            bpy.data.materials.remove(mat)
+
+
+def build_depth_layers(context):
+    """Depth-layer parallax stage (roadmap camera-rig track, next stone
+    after the ground plane): split the plate into N depth bands, each
+    on its own plane spaced along Z, so a camera move shows real
+    parallax — the standard 2.5D photo workflow (3-5 layers, space on
+    Z, rescale pushed layers by the distance ratio, animate the camera
+    only).
+
+    * each layer's material shows the source plate masked to its depth
+      band (soft Map Range ramps on the depth pass, so bands overlap
+      instead of cutting hard lines),
+    * AMVFX depth is disparity-like (1 = near): near bands sit closer
+      to the camera (+Z) and far bands behind the plate,
+    * every layer is rescaled by (camera distance - z) / camera
+      distance, so the framing matches the original plate — a layer
+      pushed back looks the same size, it just moves slower,
+    * re-running clears the old layers first (no duplicates),
+    * needs the source + depth passes in the job folder (PNG sequence
+      or per-pass MP4; video jobs animate with the frame).
+    """
+    props = context.scene.amvfx
+    job = bpy.path.abspath(props.job_dir)
+    if not job or not os.path.isdir(job):
+        return None, "Pick an AMVFX job folder first."
+
+    frame_count = 1
+    manifest_path = os.path.join(job, "manifest.json")
+    if os.path.isfile(manifest_path):
+        try:
+            with open(manifest_path) as f:
+                frame_count = int(json.load(f).get("frames", 1))
+        except Exception:
+            pass
+
+    src_img = _load_pass_image(job, "source", frame_count, props.prefer_mp4)
+    depth_img = _load_pass_image(job, "depth", frame_count, props.prefer_mp4)
+    if src_img is None:
+        return None, "No source plate found in the job folder."
+    if depth_img is None:
+        return None, ("No depth pass found in the job folder — generate "
+                      "the depth pass first.")
+    if not src_img.size[0] or not src_img.size[1]:
+        return None, "Source plate has no size - cannot build the stage."
+    aspect = src_img.size[0] / float(src_img.size[1])
+
+    # Camera distance for the framing rescale: the AMVFX camera's if it
+    # exists, else the same framing distance build_camera() computes
+    # for a default 50mm lens (~3.0 units for a 2-unit-tall plate).
+    cam = bpy.data.objects.get(CAM_NAME)
+    dist = float(cam.location.z) if cam is not None and cam.location.z > 0.5 \
+        else 3.0
+
+    n = max(2, props.depth_layers)
+    spread = max(0.2, props.depth_spread)
+    width = 1.0 / n
+    feather = width * 0.25
+
+    _clear_layers()
+    made = []
+    for i in range(n):
+        # Band centre: depth 1 = near, so layer 0 is the nearest band.
+        centre = 1.0 - (i + 0.5) / n
+        lo, hi = centre - width / 2.0, centre + width / 2.0
+        z = (centre - 0.5) * spread
+        # Rescale so the layer still fills the frame from the camera:
+        # nearer layers shrink, farther layers grow (distance ratio).
+        factor = max(0.05, (dist - z) / dist)
+
+        mat_name = f"{LAYER_MAT_PREFIX}_{i:02d}"
+        mat = bpy.data.materials.new(mat_name)
+        mat.use_nodes = True
+        nt = mat.node_tree
+        nt.nodes.clear()
+        texcoord = nt.nodes.new("ShaderNodeTexCoord")
+        texcoord.location = (-700, 0)
+        src_node = nt.nodes.new("ShaderNodeTexImage")
+        src_node.image = src_img
+        src_node.label = "Source (original plate)"
+        src_node.location = (-450, 200)
+        try:
+            src_node.image.colorspace_settings.name = "sRGB"
+        except Exception:
+            pass
+        depth_node = nt.nodes.new("ShaderNodeTexImage")
+        depth_node.image = depth_img
+        depth_node.label = "Depth (Z)"
+        depth_node.location = (-450, -200)
+        try:
+            depth_node.image.colorspace_settings.name = "Non-Color"
+        except Exception:
+            pass
+        for tex_node in (src_node, depth_node):
+            nt.links.new(texcoord.outputs["Generated"],
+                         tex_node.inputs["Vector"])
+            if tex_node.image.source in ("SEQUENCE", "MOVIE"):
+                tex_node.image_user.frame_duration = max(1, frame_count)
+                tex_node.image_user.use_auto_refresh = True
+        mask = _layer_band_mask(nt, depth_node, lo, hi, feather)
+        mask.location = (-150, -200)
+        bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.location = (150, 100)
+        nt.links.new(src_node.outputs["Color"],
+                     bsdf.inputs["Base Color"])
+        nt.links.new(mask.outputs["Value"], bsdf.inputs["Alpha"])
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        out.location = (450, 100)
+        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        # Transparent planes: same render method as the plate material.
+        for attr, val in (("blend_method", "BLEND"),
+                          ("surface_render_method", "DITHERED")):
+            try:
+                setattr(mat, attr, val)
+            except Exception:
+                pass
+
+        obj_name = f"{LAYER_PREFIX}_{i:02d}"
+        bpy.ops.mesh.primitive_plane_add(size=2.0, location=(0.0, 0.0, z))
+        obj = context.active_object
+        obj.name = obj_name
+        obj.scale = (aspect * factor, factor, 1.0)
+        obj.data.materials.append(mat)
+        made.append(obj)
+    return (made, f"Depth-layer stage: {n} layers, spread {spread:.1f}, "
+                  f"camera distance {dist:.2f} (layers rescaled to hold "
+                  f"the plate framing).")
+
+
 # --------------------------------------------------------------------------
 # operators + panel
 # --------------------------------------------------------------------------
@@ -604,6 +794,20 @@ class AMVFX_OT_ground_plane(Operator):
 
     def execute(self, context):
         result, msg = build_ground_plane(context)
+        if result is None:
+            self.report({"ERROR"}, msg)
+            return {"CANCELLED"}
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class AMVFX_OT_depth_layers(Operator):
+    bl_idname = "amvfx.add_depth_layers"
+    bl_label = "Add Depth-Layer Stage"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        result, msg = build_depth_layers(context)
         if result is None:
             self.report({"ERROR"}, msg)
             return {"CANCELLED"}
@@ -656,6 +860,9 @@ class AMVFX_PT_panel(Panel):
         plan_box.operator("amvfx.add_camera", icon="CAMERA_DATA")
         plan_box.operator("amvfx.add_ground_plane", icon="MESH_PLANE")
         plan_box.prop(props, "ground_depth")
+        plan_box.operator("amvfx.add_depth_layers", icon="RENDERLAYERS")
+        plan_box.prop(props, "depth_layers")
+        plan_box.prop(props, "depth_spread")
         box = layout.box()
         box.label(text="Z-Depth Displacement", icon="MOD_DISPLACE")
         box.prop(props, "z_depth_enabled")
@@ -671,7 +878,8 @@ class AMVFX_PT_panel(Panel):
 
 
 classes = (AMVFXProps, AMVFX_OT_build, AMVFX_OT_camera,
-           AMVFX_OT_ground_plane, AMVFX_OT_compositor, AMVFX_PT_panel)
+           AMVFX_OT_ground_plane, AMVFX_OT_depth_layers,
+           AMVFX_OT_compositor, AMVFX_PT_panel)
 
 
 def register():
